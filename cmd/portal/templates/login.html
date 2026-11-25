@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1>Entrar</h1>
+{{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
+<form method="post" action="/login" autocomplete="off">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <div class="field">
+    <label for="password">Senha</label>
+    <input id="password" name="password" type="password" required autofocus
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+  </div>
+  <button class="btn primary" type="submit">Entrar</button>
+  <p class="hint">Senha inicial: <span class="mono">printserver</span></p>
+</form>
+{{end}}

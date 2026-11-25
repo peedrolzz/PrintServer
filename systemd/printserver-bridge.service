@@ -1,0 +1,45 @@
+[Unit]
+Description=PrintServer Bridge (TCP -> USB)
+After=network-online.target printserver-firstboot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=printserver
+Group=printserver
+SupplementaryGroups=lp
+ExecStart=/usr/bin/printserver-bridge --config=/etc/printserver/printers.json --bind=0.0.0.0
+Restart=always
+RestartSec=3
+
+# Hardening (V01/V09/V17/V23)
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=no
+DeviceAllow=/dev/usb/lp0 rw
+DeviceAllow=/dev/usb/lp1 rw
+DeviceAllow=/dev/usb/lp2 rw
+DeviceAllow=/dev/usb/lp3 rw
+DevicePolicy=closed
+ProtectSystem=strict
+ReadWritePaths=/var/lib/printserver /run/printserver
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+LimitNOFILE=512
+TasksMax=64
+MemoryMax=96M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=PrintServer update /etc/issue banner on tty1
+Documentation=https://github.com/printserver/printserver
+After=printserver-network.service printserver-hotspot.service multi-user.target
+Wants=printserver-network.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-update-issue
+# After writing /etc/issue, kick agetty so the banner is redrawn on tty1
+# even if the kernel/cloud-init messages painted over it.
+ExecStartPost=/usr/bin/systemctl try-restart getty@tty1.service
+RemainAfterExit=no
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

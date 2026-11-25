@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-}"
+case "$MODE" in
+    hotspot|client) ;;
+    *) echo "usage: $0 hotspot|client" >&2; exit 2 ;;
+esac
+
+install -d -o root -g root -m 0755 /etc/printserver
+printf '%s\n' "$MODE" > /etc/printserver/mode
+chmod 0644 /etc/printserver/mode
+
+echo "[set-mode] mode=$MODE"
+
+systemctl restart printserver-network.service
+systemctl restart printserver-hotspot.service     2>/dev/null || true
+systemctl restart printserver-hotspot-dns.service 2>/dev/null || true
+
+if [[ "$MODE" == "client" && -f /etc/printserver/wifi-ssid ]]; then
+    SSID="$(< /etc/printserver/wifi-ssid)"
+    safe=""
+    for (( i=0; i<${#SSID}; i++ )); do
+        c="${SSID:i:1}"
+        case "$c" in [A-Za-z0-9_-]) safe+="$c" ;; esac
+    done
+    PROFILE="wifi-$safe"
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        if /usr/bin/nmcli connection up "$PROFILE" >/dev/null 2>&1; then
+            echo "[set-mode] NM ativou $PROFILE"
+            break
+        fi
+        sleep 1
+    done
+fi

@@ -1,0 +1,15 @@
+[Unit]
+Description=PrintServer watchdog: fall back to hotspot if WiFi-client has no IP
+Documentation=https://github.com/printserver/printserver
+After=printserver-network.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-watchdog
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/printserver /run/printserver
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN

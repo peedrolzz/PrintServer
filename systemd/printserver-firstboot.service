@@ -1,0 +1,13 @@
+[Unit]
+Description=PrintServer first-boot initialization
+ConditionPathExists=/etc/printserver/firstboot.flag
+After=local-fs.target
+Before=network-pre.target printserver-agent.service printserver-portal.service printserver-bridge.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/printserver-firstboot
+
+[Install]
+WantedBy=multi-user.target

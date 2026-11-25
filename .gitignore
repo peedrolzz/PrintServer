@@ -1,0 +1,15 @@
+dist/
+*.deb
+*.img
+*.bin
+*.tmp
+
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+*.bak
+*.backup*
+*.old

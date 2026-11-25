@@ -1,0 +1,29 @@
+[Unit]
+Description=PrintServer on-demand WiFi scan (pauses the hotspot briefly)
+Documentation=https://github.com/printserver/printserver
+After=printserver-network.service
+RequiresMountsFor=/etc/printserver /run
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-wifi-scan --pause-ap
+RemainAfterExit=no
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=25
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW

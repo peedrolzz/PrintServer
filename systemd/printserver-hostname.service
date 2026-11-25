@@ -1,0 +1,34 @@
+[Unit]
+Description=PrintServer align hostname with the hotspot SSID suffix
+Documentation=https://github.com/printserver/printserver
+After=local-fs.target printserver-firstboot.service
+Before=printserver-network.service printserver-portal.service avahi-daemon.service
+RequiresMountsFor=/etc/printserver /var/lib/printserver
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-hostname
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+# sethostname needs CAP_SYS_ADMIN; the certificate swap needs the file caps.
+# Everything else stays locked down.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/hostname /etc/hosts /var/lib/printserver /run
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_SYS_ADMIN
+
+[Install]
+WantedBy=multi-user.target

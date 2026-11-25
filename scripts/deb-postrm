@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+        for u in \
+            printserver-discover.service \
+            printserver-bridge.service \
+            printserver-portal.service \
+            printserver-hotspot-dns.service \
+            printserver-hotspot.service \
+            printserver-network.service \
+            printserver-firstboot.service \
+            printserver-helper.service
+        do
+            systemctl disable "$u" 2>/dev/null || true
+            systemctl stop "$u"    2>/dev/null || true
+        done
+        systemctl unmask hostapd.service 2>/dev/null || true
+        systemctl unmask dnsmasq.service 2>/dev/null || true
+        systemctl daemon-reload || true
+        ;;
+esac
+
+exit 0

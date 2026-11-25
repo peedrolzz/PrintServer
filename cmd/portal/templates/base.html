@@ -1,0 +1,159 @@
+{{define "base"}}<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FFFFFF">
+<title>{{.Title}} · PrintServer</title>
+<link rel="icon" href="data:,">
+<style>
+/* PrintServer · painel do equipamento.
+   Papel branco e tinta preta. Cor só quando há estado: verde = conectado,
+   âmbar = atenção, vermelho = falha. Sem fontes externas: a Pi pode estar
+   sem internet, e o painel não muda de cor conforme o tema do celular. */
+*,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --desk:#F1F1F1;
+  --paper:#FFFFFF;
+  --ink:#141414;
+  --ink-2:#4A4A4A;
+  --ink-3:#757575;
+  --rule:#DCDCDD;
+  --ok:#0F8A51;
+  --ok-text:#0A6E40;
+  --ok-wash:#EAF6EF;
+  --warn:#8A5A00;
+  --warn-wash:#FBF2DD;
+  --err:#B3261E;
+  --err-wash:#FCECEA;
+  --r:6px;
+  --ease:cubic-bezier(.2,0,0,1);
+}
+html,body{margin:0;min-height:100%;background:var(--desk);color:var(--ink)}
+body{
+  font:400 15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--ink)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+.sheet{max-width:600px;margin:20px auto;background:var(--paper);border:1px solid var(--rule);border-radius:var(--r)}
+.head{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px dashed var(--rule)}
+.brand{display:flex;align-items:baseline;gap:8px;min-width:0}
+.head .name{font:600 14px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);text-decoration:none}
+.head .name:hover{text-decoration:none;color:var(--ink)}
+.head .id{font:500 12px/1 ui-monospace,monospace;color:var(--ink-3)}
+.head .spacer{flex:1}
+.head-link{display:inline-flex;align-items:center;min-height:44px;color:var(--ink-2);font-size:13px;padding:8px 4px;text-decoration:none}
+.head-link:hover{color:var(--ink);text-decoration:underline}
+.head button{background:none;border:0;color:var(--ink-2);font:inherit;font-size:13px;padding:8px 4px;cursor:pointer;min-height:44px}
+.head button:hover{color:var(--ink);text-decoration:underline}
+main{padding:20px}
+h1{font:600 19px/1.2 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.01em;margin:0 0 16px}
+h2{font:600 13px/1.2 ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-3);margin:24px 0 10px}
+p{margin:0 0 14px;color:var(--ink-2)}
+p:last-child{margin-bottom:0}
+.hint{font-size:12.5px;color:var(--ink-3);margin:8px 0 0}
+.mt{margin-top:16px}
+
+/* Cupom: rótulo à esquerda, valor à direita, traço pontilhado. */
+.rows{margin:0}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px dotted var(--rule);font-size:14px}
+.row:last-child{border-bottom:0}
+.row dt{color:var(--ink-3)}
+.row dd{margin:0;font-family:ui-monospace,monospace;font-size:13.5px;overflow-wrap:anywhere;text-align:right}
+
+/* LED: o ponto é neutro por padrão. Só estados recebem cor. */
+.led{display:inline-flex;align-items:center;gap:8px;font-weight:500}
+.led.has-hint{margin-bottom:0}
+.led::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-3);flex:none}
+.led.ok::before{background:var(--ok)}
+.led.warn::before{background:var(--warn)}
+.led.err::before{background:var(--err)}
+.msg{padding:11px 13px;border-radius:var(--r);font-size:13.5px;margin-bottom:16px;background:var(--desk);color:var(--ink)}
+.msg.ok{background:var(--ok-wash);color:var(--ok-text)}
+.msg.warn{background:var(--warn-wash);color:var(--warn)}
+.msg.err{background:var(--err-wash);color:var(--err)}
+
+/* Botões são teclas: grandes, quadradas, uma ação principal por tela. */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;padding:10px 14px;
+  border:1px solid var(--rule);border-radius:var(--r);background:var(--paper);color:var(--ink);
+  font:600 14px/1 ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-decoration:none;
+  transition:background .12s var(--ease),border-color .12s var(--ease)}
+.btn:hover{background:var(--desk);border-color:var(--ink-3);text-decoration:none}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.btn.primary:hover{background:#333;border-color:#333}
+.btn.danger{color:var(--err);border-color:var(--rule)}
+.btn.danger:hover{background:var(--err-wash);border-color:var(--err)}
+.btn.link{min-height:44px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-weight:600;padding:10px 14px}
+.btn.link:hover{background:var(--desk)}
+.grid{display:grid;gap:8px}
+@media (min-width:380px){.grid.two{grid-template-columns:1fr 1fr}}
+
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+input,select,textarea{
+  appearance:none;font:inherit;font-size:15px;width:100%;min-height:46px;padding:10px 12px;
+  background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:var(--r);
+  transition:border-color .12s var(--ease)}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--ink)}
+input[type=file]{min-height:auto;padding:8px;font-size:13px;border-style:dashed}
+input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;accent-color:var(--ink)}
+.field{margin-bottom:14px}
+.check{display:flex;align-items:center;gap:10px;font-weight:400;font-size:14px;cursor:pointer}
+.check input{flex:none}
+.segment{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;background:var(--desk);border-radius:var(--r);margin-bottom:14px}
+.segment label{position:relative;margin:0;text-align:center;color:var(--ink-3);cursor:pointer;font-weight:500}
+.segment span{display:block;padding:13px 8px;border-radius:4px}
+.segment input{position:absolute;left:0;top:50%;width:1px;height:1px;opacity:0;pointer-events:none}
+.segment input:checked+span{background:var(--ink);color:var(--paper);font-weight:600}
+.segment input:focus-visible+span{outline:2px solid var(--ink);outline-offset:2px}
+
+.list{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.list li+li{border-top:1px solid var(--rule)}
+.list button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  min-height:48px;padding:8px 4px;background:none;border:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.list button:hover{background:var(--desk)}
+.tag{font-size:11px;color:var(--ink-3);white-space:nowrap}
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px;margin-left:8px}
+.bars i{width:3px;background:var(--rule);border-radius:1px}
+.bars i:nth-child(1){height:30%}.bars i:nth-child(2){height:55%}.bars i:nth-child(3){height:78%}.bars i:nth-child(4){height:100%}
+.bars i.on{background:var(--ink-2)}
+.badge{font:500 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:4px;background:var(--desk);color:var(--ink-2)}
+.badge.ok{background:var(--ok-wash);color:var(--ok-text)}
+.badge.warn{background:var(--warn-wash);color:var(--warn)}
+.badge.err{background:var(--err-wash);color:var(--err)}
+.choice{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--rule)}
+.choice p{font-size:13px;margin:4px 0 0}
+.choice form{flex:none}
+.choice .btn{width:auto;min-height:44px;padding:8px 14px}
+.hidden{display:none!important}
+@media (max-width:520px){.sheet{margin:0;border:0;border-radius:0}main{padding:16px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<a href="#main" class="sr-only">Pular para o conteúdo</a>
+<div class="sheet">
+<header class="head">
+  <span class="brand">
+    <a class="name" href="/">PrintServer</a>
+    <span class="id">{{.ShortID}}</span>
+  </span>
+  <span class="spacer"></span>
+  {{if .Authenticated}}
+  {{if .ShowBack}}<a class="head-link" href="/">Voltar</a>{{end}}
+  <form method="post" action="/logout">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button type="submit">Sair</button>
+  </form>
+  {{end}}
+</header>
+<main id="main">{{template "content" .}}</main>
+</div>
+</body>
+</html>{{end}}

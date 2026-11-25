@@ -1,0 +1,36 @@
+[Unit]
+Description=PrintServer apply network config (hostapd + dnsmasq + NM)
+Documentation=https://github.com/printserver/printserver
+After=printserver-firstboot.service local-fs.target
+Before=printserver-hotspot.service printserver-hotspot-dns.service network-pre.target
+Wants=printserver-firstboot.service
+RequiresMountsFor=/var/lib/printserver /etc/printserver
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-apply-network-config
+RemainAfterExit=yes
+TimeoutStartSec=60
+StandardOutput=journal
+StandardError=journal
+
+# Hardening: writes only in the two directories below, needs CAP_NET_ADMIN
+# for `ip addr`/`ip link`, nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/printserver /etc/NetworkManager /var/lib/printserver /run
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

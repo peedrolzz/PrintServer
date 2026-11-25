@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:---pre-ap}"
+STATE_DIR="${PRINTSERVER_SCAN_STATE_DIR:-/run/printserver}"
+OUT="$STATE_DIR/wifi-scan.json"
+RAW="$STATE_DIR/wifi-scan.raw"
+WLAN="${PRINTSERVER_WLAN_IF:-wlan0}"
+log() { printf '[wifi-scan] %s\n' "$*" >&2; }
+
+mkdir -p "$STATE_DIR"
+
+if ! command -v iw >/dev/null 2>&1; then
+    log "iw not installed; leaving any previous scan in place"
+    exit 0
+fi
+
+stopped_ap=0
+if [[ "$MODE" == "--pause-ap" ]]; then
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$STATE_DIR/wifi-scan.lock"
+        if ! flock -w 5 9; then
+            log "outra ação de rede em andamento; busca ignorada"
+            exit 0
+        fi
+    fi
+    current_mode="hotspot"
+    [[ -f /etc/printserver/mode ]] && current_mode="$(< /etc/printserver/mode)"
+    if [[ "$current_mode" != "hotspot" ]]; then
+        log "mode=$current_mode, skipping AP pause"
+        exit 0
+    fi
+    systemctl stop printserver-hotspot-dns.service printserver-hotspot.service 2>/dev/null || true
+    stopped_ap=1
+    sleep 1
+fi
+
+rfkill unblock wifi 2>/dev/null || true
+ip link set "$WLAN" up 2>/dev/null || true
+sleep 1
+
+iw dev "$WLAN" scan >"$RAW" 2>/dev/null || true
+
+if [[ "$stopped_ap" == "1" ]]; then
+    systemctl start printserver-hotspot.service 2>/dev/null || true
+    systemctl start printserver-hotspot-dns.service 2>/dev/null || true
+fi
+
+if [[ ! -s "$RAW" ]]; then
+    log "scan returned nothing; keeping the previous cache"
+    exit 0
+fi
+
+tmp="$OUT.tmp.$$"
+awk -v ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+    function esc(s) {
+        gsub(/\\/, "\\\\", s)
+        gsub(/"/, "\\\"", s)
+        return s
+    }
+    function flush(   sig, sec) {
+        if (ssid != "") {
+            sig = 2 * (dbm + 100)
+            if (sig < 0) sig = 0
+            if (sig > 100) sig = 100
+            sec = ent ? "enterprise" : (wpa ? "wpa" : "open")
+            printf "%s{\"ssid\":\"%s\",\"signal\":%d,\"security\":\"%s\",\"channel\":%d}", \
+                (n++ ? "," : ""), esc(ssid), sig, sec, chan
+        }
+        ssid = ""; dbm = -100; ent = 0; wpa = 0; chan = 0
+    }
+    BEGIN { n = 0; ssid = ""; dbm = -100; ent = 0; wpa = 0; chan = 0;
+            printf "{\"scanned_at\":\"%s\",\"networks\":[", ts }
+    /^BSS / { flush(); next }
+    /^\tSSID: / { sub(/^\tSSID: /, ""); ssid = $0; next }
+    /^\tsignal: / {
+        s = $0
+        sub(/^\tsignal: /, "", s)
+        sub(/ dBm.*/, "", s)
+        dbm = int(s + 0)
+        next
+    }
+    /^\tfreq: / {
+        s = $0
+        sub(/^\tfreq: /, "", s)
+        f = int(s + 0)
+        if (f >= 2412 && f <= 2484) chan = int((f - 2407) / 5)
+        else if (f >= 5000) chan = int((f - 5000) / 5)
+        next
+    }
+    /^\tDS Parameter set: / {
+        chan = $5 + 0
+        next
+    }
+    /^\tRSN:/ { wpa = 1; next }
+    /^\tWPA:/ { wpa = 1; next }
+    /Authentication suites:/ {
+        if ($0 ~ /802\.1X|EAP/) ent = 1
+        next
+    }
+    END { flush(); print "]}" }
+' "$RAW" >"$tmp"
+
+if ! grep -q '"networks":\[{' "$tmp"; then
+    log "no SSIDs parsed; keeping the previous cache"
+    rm -f "$tmp"
+    exit 0
+fi
+
+chmod 0644 "$tmp"
+mv "$tmp" "$OUT"
+count="$(grep -o '"ssid":' "$OUT" | wc -l)"
+log "wrote $OUT ($count networks)"

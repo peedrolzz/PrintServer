@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 0077
+
+CONFIG_DIR=/etc/printserver
+CRED_DIR=/var/lib/printserver/credentials
+TOOL=/usr/bin/printserver-tool
+WLAN="${PRINTSERVER_WLAN_IF:-wlan0}"
+
+log() { printf '[hostname] %s\n' "$*"; }
+
+[[ -f "$CONFIG_DIR/device.json" ]] || { log "no device.json, nothing to do"; exit 0; }
+
+DEVICE_ID="$("$TOOL" device-id "$CONFIG_DIR/device.json" 2>/dev/null || true)"
+[[ -n "$DEVICE_ID" ]] || { log "empty device id, nothing to do"; exit 0; }
+
+SUFFIX="${DEVICE_ID#PS-}"
+SUFFIX="${SUFFIX: -4}"
+SUFFIX="${SUFFIX,,}"
+[[ -n "$SUFFIX" ]] || { log "no suffix, nothing to do"; exit 0; }
+
+WANT="printserver-${SUFFIX}"
+CUR="$(hostname 2>/dev/null || echo printserver)"
+
+hosts_body="$(grep -vE '^127\.0\.1\.1([[:space:]]|$)' /etc/hosts || true)"
+printf '%s\n%s\n' "$hosts_body" "127.0.1.1	${WANT}" >/etc/hosts
+
+if [[ "$CUR" != "$WANT" ]]; then
+    log "renaming $CUR -> $WANT"
+    printf '%s\n' "$WANT" > /etc/hostname
+    hostname "$WANT"
+fi
+
+cert="$CRED_DIR/portal-cert.pem"
+if [[ -f "$cert" ]] && \
+   ! openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null | grep -q "$WANT.local"; then
+    PRIMARY_IP="$(ip -4 -br addr show "$WLAN" 2>/dev/null | awk '{print $3}' | cut -d/ -f1 || true)"
+    [[ -n "$PRIMARY_IP" ]] || PRIMARY_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    SAN="subjectAltName=DNS:$WANT.local,DNS:$WANT,DNS:printserver.local,IP:10.42.0.1"
+    if [[ -n "$PRIMARY_IP" && "$PRIMARY_IP" != "10.42.0.1" ]]; then
+        SAN="${SAN},IP:${PRIMARY_IP}"
+    fi
+    tmp_cert="$CRED_DIR/.portal-cert.pem.$$"
+    tmp_key="$CRED_DIR/.portal-key.pem.$$"
+    if openssl req -x509 -newkey rsa:2048 -nodes \
+        -out "$tmp_cert" -keyout "$tmp_key" \
+        -subj "/CN=$WANT.local" \
+        -addext "$SAN" \
+        -days 3650 >/dev/null 2>&1; then
+        chown printserver:printserver "$tmp_cert" "$tmp_key"
+        chmod 0644 "$tmp_cert"
+        chmod 0600 "$tmp_key"
+        mv "$tmp_cert" "$cert"
+        mv "$tmp_key" "$CRED_DIR/portal-key.pem"
+        log "regenerated portal certificate for $WANT.local"
+    else
+        rm -f "$tmp_cert" "$tmp_key"
+        log "certificate regeneration failed; keeping the old certificate"
+    fi
+fi
+
+log "hostname is now $WANT.local"

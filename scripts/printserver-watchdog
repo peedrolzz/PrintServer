@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE_FILE=/etc/printserver/mode
+STATE_DIR=/run/printserver
+FAIL_FILE="$STATE_DIR/watchdog.fail"
+CLIENT_FAIL_LIMIT="${CLIENT_FAIL_LIMIT:-4}"
+WLAN=${PRINTSERVER_WLAN_IF:-wlan0}
+HOTSPOT_IP=10.42.0.1
+
+mkdir -p "$STATE_DIR"
+
+MODE="hotspot"
+[[ -f "$MODE_FILE" ]] && MODE="$(< "$MODE_FILE")"
+
+if [[ "$MODE" != "client" ]]; then
+    echo 0 > "$FAIL_FILE"
+    exit 0
+fi
+
+IP="$(ip -4 -br addr show "$WLAN" 2>/dev/null | awk '{print $3}' | cut -d/ -f1 || true)"
+NM_LINE="$(nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v d="$WLAN" '$1==d {print $2 ":" $3; exit}' || true)"
+NM_STATE="${NM_LINE%%:*}"
+NM_CONN="${NM_LINE#*:}"
+if [[ -n "$IP" && "$IP" != "169.254."* && "$IP" != "$HOTSPOT_IP" \
+      && "$NM_STATE" == "connected" && -n "$NM_CONN" && "$NM_CONN" != "--" ]]; then
+    echo 0 > "$FAIL_FILE"
+    exit 0
+fi
+
+CUR=0
+[[ -f "$FAIL_FILE" ]] && CUR="$(< "$FAIL_FILE")"
+CUR=$((CUR + 1))
+echo "$CUR" > "$FAIL_FILE"
+
+if (( CUR >= CLIENT_FAIL_LIMIT )); then
+    logger -t printserver-watchdog "WiFi client has no IP after $CUR checks; reverting to hotspot"
+    /usr/local/sbin/printserver-set-mode hotspot
+    echo 0 > "$FAIL_FILE"
+fi

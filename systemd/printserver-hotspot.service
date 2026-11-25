@@ -1,0 +1,40 @@
+[Unit]
+Description=PrintServer WiFi hotspot (hostapd, always on)
+Documentation=https://github.com/printserver/printserver
+After=printserver-network.service sys-subsystem-net-devices-wlan0.device
+Requires=printserver-network.service
+BindsTo=sys-subsystem-net-devices-wlan0.device
+# Stay independent of ethernet: hotspot runs whether or not eth0 is up.
+Wants=network.target
+
+[Service]
+Type=simple
+# Only start when the mode file says "hotspot" (or is missing, which also
+# defaults to hotspot). In "client" mode the AP stays down.
+ExecCondition=/bin/sh -c 'test ! -f /etc/printserver/mode || test "$(cat /etc/printserver/mode)" = "hotspot"'
+ExecStartPre=/usr/sbin/rfkill unblock wifi
+ExecStart=/usr/sbin/hostapd /etc/printserver/hostapd.conf
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

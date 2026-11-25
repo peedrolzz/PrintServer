@@ -1,0 +1,123 @@
+{{define "content"}}
+<h1>WiFi</h1>
+{{if .Message}}<div class="msg ok">{{.Message}}</div>{{end}}
+{{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
+
+{{if eq .Mode "client"}}
+<p>Conectado a uma rede. Abrir hotspot novamente?</p>
+<form method="post" action="/wifi/hotspot">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <button class="btn" type="submit">Abrir hotspot</button>
+</form>
+{{end}}
+
+<h2>Redes por perto {{if .ScannedAt}}<span class="tag">{{.ScannedAt}}</span>{{end}}</h2>
+<form method="post" action="/wifi/scan">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <button class="btn" type="submit">Buscar de novo</button>
+  <p class="hint">O hotspot cai por cerca de 10 segundos.</p>
+</form>
+{{if .NearbyWifi}}
+<ul class="list">
+  {{range .NearbyWifi}}
+  <li><button type="button" class="wifi-row" data-ssid="{{.SSID}}" data-sec="{{.Security}}">
+    <span>{{.SSID}}{{if .InUse}} <span class="badge ok">conectado</span>{{end}}</span>
+    <span class="tag">
+      {{if eq .Security "open"}}aberta{{else if eq .Security "enterprise"}}corporativa{{else}}protegida{{end}}
+      <span class="bars" aria-label="sinal {{.Signal}}%">
+        <i{{if ge .Bars 1}} class="on"{{end}}></i><i{{if ge .Bars 2}} class="on"{{end}}></i><i{{if ge .Bars 3}} class="on"{{end}}></i><i{{if ge .Bars 4}} class="on"{{end}}></i>
+      </span>
+    </span>
+  </button></li>
+  {{end}}
+</ul>
+{{else}}
+<p>Nenhuma rede vista. Digite o nome abaixo.</p>
+{{end}}
+
+<h2>Conectar</h2>
+<form method="post" action="/wifi/connect" id="wifi-form" autocomplete="off">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <div class="field">
+    <label for="ssid">Nome da rede</label>
+    <input id="ssid" name="ssid" type="text" required class="mono"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+  </div>
+  <div class="segment">
+    <label><input id="type-personal" name="type" type="radio" value="personal" checked><span>Comum</span></label>
+    <label><input id="type-enterprise" name="type" type="radio" value="enterprise"><span>Corporativa</span></label>
+    <label><input id="type-open" name="type" type="radio" value="open"><span>Aberta</span></label>
+  </div>
+  <div id="personal-fields">
+    <div class="field">
+      <label for="password">Senha da rede</label>
+      <input id="password" name="password" type="password" autocomplete="new-password">
+    </div>
+  </div>
+  <div id="enterprise-fields" class="hidden">
+    <div class="field">
+      <label for="username">Usuário</label>
+      <input id="username" name="username" type="text" class="mono"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="enterprise_password">Senha</label>
+      <input id="enterprise_password" name="enterprise_password" type="password" autocomplete="current-password">
+    </div>
+    <label class="check">
+      <input id="validate_cert" name="validate_cert" type="checkbox">
+      <span>Validar certificado da empresa</span>
+    </label>
+    <div id="ca-field" class="field hidden" style="margin-top:14px">
+      <label for="ca_file">Certificado (.pem ou .crt)</label>
+      <input id="ca_file" name="ca_file" type="file" accept=".pem,.crt,.cer">
+    </div>
+  </div>
+  <button class="btn primary mt" type="submit">Conectar</button>
+  <p class="hint">Ao conectar, o hotspot sai do ar. Depois use
+    <span class="mono">https://{{or .Hostname "printserver"}}.local</span> na mesma rede.</p>
+</form>
+
+
+<script>
+(function(){
+  var radios=document.querySelectorAll('input[name="type"]');
+  var personal=document.getElementById('personal-fields');
+  var enterprise=document.getElementById('enterprise-fields');
+  var pw=document.getElementById('password');
+  var user=document.getElementById('username');
+  var epw=document.getElementById('enterprise_password');
+  var vc=document.getElementById('validate_cert');
+  var caField=document.getElementById('ca-field');
+  var caFile=document.getElementById('ca_file');
+  var ssid=document.getElementById('ssid');
+  function sync(){
+    var kind=document.querySelector('input[name="type"]:checked').value;
+    var ent=kind==='enterprise';
+    var open=kind==='open';
+    personal.classList.toggle('hidden',ent||open);
+    enterprise.classList.toggle('hidden',!ent);
+    pw.disabled=ent||open;
+    user.disabled=!ent;epw.disabled=!ent;
+    user.required=ent;epw.required=ent;
+    var cert=vc.checked&&ent;
+    caField.classList.toggle('hidden',!cert);
+    caFile.required=cert;caFile.disabled=!cert;
+  }
+  radios.forEach(function(r){r.addEventListener('change',sync)});
+  vc.addEventListener('change',sync);
+  sync();
+  document.querySelectorAll('.wifi-row').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      ssid.value=btn.dataset.ssid;
+      var sec=btn.dataset.sec;
+      var choice=sec==='enterprise'?'type-enterprise':(sec==='open'?'type-open':'type-personal');
+      document.getElementById(choice).checked=true;
+      sync();
+      if(sec!=='open') (sec==='enterprise'?user:pw).focus();
+      document.getElementById('wifi-form').scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+})();
+</script>
+{{end}}

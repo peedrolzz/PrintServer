@@ -1,0 +1,39 @@
+[Unit]
+Description=PrintServer privileged action helper
+After=local-fs.target
+Before=printserver-agent.service printserver-portal.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/printserver-helper --socket=/run/printserver/helper.sock --group=printserver
+RuntimeDirectory=printserver
+RuntimeDirectoryMode=0755
+Restart=always
+RestartSec=3
+
+# Hardening: root is required to invoke systemctl/reboot but we still lock
+# the process down. Only CAP_SYS_BOOT is kept for reboot capability.
+CapabilityBoundingSet=CAP_SYS_BOOT CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/printserver /etc/NetworkManager /etc/printserver
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service @reboot
+UMask=0077
+LimitNOFILE=64
+TasksMax=16
+MemoryMax=32M
+
+[Install]
+WantedBy=multi-user.target

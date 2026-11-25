@@ -1,0 +1,47 @@
+{{define "content"}}
+<h1 class="led{{if .NetStatus.Level}} {{.NetStatus.Level}}{{end}}{{if .NetStatus.Detail}} has-hint{{end}}">{{.NetStatus.Label}}</h1>
+{{if .NetStatus.Detail}}<p class="hint">{{.NetStatus.Detail}}</p>{{end}}
+
+<dl class="rows">
+  <div class="row"><dt>Rede</dt><dd>{{.NetStatus.Mode}}</dd></div>
+  <div class="row"><dt>Endereço</dt><dd>{{.NetStatus.IP}}</dd></div>
+  <div class="row"><dt>USB</dt><dd>{{if gt .NetStatus.PrintersCount 0}}{{.NetStatus.PrintersCount}}{{else}}0{{end}}</dd></div>
+  <div class="row"><dt>Impressão</dt><dd>{{if .BridgeOpen}}aberta{{else}}com token{{end}}</dd></div>
+</dl>
+
+{{if .Printers}}
+<h2>Impressoras</h2>
+<ul class="list">
+  {{range .Printers}}
+  <li><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+    <span>{{.Name}}</span><span class="tag mono">{{.TCPPort}}</span>
+  </div></li>
+  {{end}}
+</ul>
+<p><a class="btn" href="/test-print" style="margin-top:12px">Imprimir teste</a></p>
+{{end}}
+
+<h2>Configurar</h2>
+<div class="grid two">
+  <a class="btn" href="/wifi">WiFi</a>
+  <a class="btn" href="/bridge">Impressão</a>
+  <a class="btn" href="/password">Senha</a>
+  <a class="btn" href="/diag">Diagnóstico</a>
+</div>
+
+<h2>Manutenção</h2>
+<div class="grid">
+  <form method="post" action="/actions/reload-usb">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn" type="submit">Reconhecer USB</button>
+  </form>
+  <form method="post" action="/actions/restart-bridge">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn" type="submit">Reiniciar impressão</button>
+  </form>
+  <form method="post" action="/actions/reboot" onsubmit="return confirm('Reiniciar o equipamento?')">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <button class="btn danger" type="submit">Reiniciar equipamento</button>
+  </form>
+</div>
+{{end}}

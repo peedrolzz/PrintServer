@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+
+if ! getent group printserver >/dev/null; then
+    groupadd --system printserver
+fi
+if ! id printserver >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin \
+            --gid printserver printserver
+fi
+
+usermod -a -G lp,dialout printserver 2>/dev/null || true
+
+if [ ! -f /etc/printserver/device.json ]; then
+    : > /etc/printserver/firstboot.flag
+    chmod 0644 /etc/printserver/firstboot.flag
+    echo "printserver: fresh install, firstboot.flag created"
+fi
+
+systemctl mask hostapd.service    2>/dev/null || true
+systemctl mask dnsmasq.service    2>/dev/null || true
+
+systemctl daemon-reload || true
+for u in \
+    printserver-helper.service \
+    printserver-firstboot.service \
+    printserver-hostname.service \
+    printserver-recovery.service \
+    printserver-network.service \
+    printserver-hotspot.service \
+    printserver-hotspot-dns.service \
+    printserver-issue.service \
+    printserver-portal.service \
+    printserver-bridge.service \
+    printserver-discover.service \
+    printserver-watchdog.timer
+do
+    systemctl enable "$u" 2>/dev/null || true
+done
+
+echo "printserver: install done. Reboot or run 'systemctl start printserver-network' to apply."
+exit 0

@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 0022
+
+STATE_DIR=/var/lib/printserver
+CRED_DIR="$STATE_DIR/credentials"
+CONFIG_DIR=/etc/printserver
+NM_DIR=/etc/NetworkManager
+HOSTAPD_CONF=/etc/printserver/hostapd.conf
+DNSMASQ_CONF=/etc/printserver/dnsmasq.conf
+WLAN_IF="${PRINTSERVER_WLAN_IF:-wlan0}"
+ETH_IF="${PRINTSERVER_ETH_IF:-eth0}"
+HOTSPOT_IP=10.42.0.1
+HOTSPOT_SUBNET=10.42.0.0/24
+HOTSPOT_POOL_START=10.42.0.10
+HOTSPOT_POOL_END=10.42.0.50
+
+log() { printf '[apply-network] %s\n' "$*"; }
+
+[[ -f "$CONFIG_DIR/device.json" ]] || { log "no device.json, skipping"; exit 0; }
+[[ -f "$CRED_DIR/hotspot-password" ]] || { log "no hotspot-password, skipping"; exit 0; }
+
+MODE_FILE="$CONFIG_DIR/mode"
+MODE="hotspot"
+if [[ -f "$MODE_FILE" ]]; then
+    MODE="$(< "$MODE_FILE")"
+fi
+log "mode=$MODE"
+
+DEVICE_ID="$(/usr/bin/printserver-tool device-id "$CONFIG_DIR/device.json")"
+SUFFIX="${DEVICE_ID##*-}"
+SUFFIX="${SUFFIX: -4}"
+SSID="PrintServer-${SUFFIX}"
+PSK="$(< "$CRED_DIR/hotspot-password")"
+
+if [[ "$MODE" == "hotspot" ]]; then
+    /usr/local/sbin/printserver-wifi-scan --pre-ap \
+        || log "pre-AP wifi scan failed (not critical)"
+fi
+
+install -d -o root -g root -m 0755 "$CONFIG_DIR"
+cat > "$HOSTAPD_CONF" <<EOF
+interface=$WLAN_IF
+driver=nl80211
+ssid=$SSID
+hw_mode=g
+channel=6
+country_code=BR
+ieee80211d=1
+auth_algs=1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=CCMP
+rsn_pairwise=CCMP
+wpa_passphrase=$PSK
+ap_isolate=0
+EOF
+chmod 0600 "$HOSTAPD_CONF"
+log "wrote $HOSTAPD_CONF (ssid=$SSID)"
+
+cat > "$DNSMASQ_CONF" <<EOF
+interface=$WLAN_IF
+bind-interfaces
+no-resolv
+no-hosts
+listen-address=$HOTSPOT_IP
+dhcp-range=$HOTSPOT_POOL_START,$HOTSPOT_POOL_END,255.255.255.0,2h
+dhcp-option=3,$HOTSPOT_IP
+dhcp-option=6,$HOTSPOT_IP
+
+address=/printserver.local/$HOTSPOT_IP
+address=/printserver/$HOTSPOT_IP
+
+address=/captive.apple.com/$HOTSPOT_IP
+address=/apple.com/$HOTSPOT_IP
+address=/www.apple.com/$HOTSPOT_IP
+address=/connectivitycheck.gstatic.com/$HOTSPOT_IP
+address=/connectivitycheck.android.com/$HOTSPOT_IP
+address=/clients3.google.com/$HOTSPOT_IP
+address=/clients4.google.com/$HOTSPOT_IP
+address=/www.google.com/$HOTSPOT_IP
+address=/connect.rom.miui.com/$HOTSPOT_IP
+address=/www.msftconnecttest.com/$HOTSPOT_IP
+address=/dns.msftncsi.com/$HOTSPOT_IP
+address=/www.msftncsi.com/$HOTSPOT_IP
+address=/detectportal.firefox.com/$HOTSPOT_IP
+address=/nmcheck.gnome.org/$HOTSPOT_IP
+address=/network-test.debian.org/$HOTSPOT_IP
+EOF
+chmod 0644 "$DNSMASQ_CONF"
+log "wrote $DNSMASQ_CONF"
+
+install -d -o root -g root -m 0755 "$NM_DIR/conf.d"
+if [[ "$MODE" == "hotspot" ]]; then
+    cat > "$NM_DIR/conf.d/10-printserver-unmanaged.conf" <<EOF
+[keyfile]
+unmanaged-devices=interface-name:$WLAN_IF
+EOF
+    chmod 0644 "$NM_DIR/conf.d/10-printserver-unmanaged.conf"
+    log "NM told to ignore $WLAN_IF"
+else
+    ip addr flush dev "$WLAN_IF" 2>/dev/null || true
+    rm -f "$NM_DIR/conf.d/10-printserver-unmanaged.conf"
+    /usr/bin/nmcli general reload >/dev/null 2>&1 || true
+    /usr/bin/nmcli device set "$WLAN_IF" managed yes >/dev/null 2>&1 || true
+    log "NM now manages $WLAN_IF"
+fi
+
+install -d -o root -g root -m 0700 "$NM_DIR/system-connections"
+ETH_PROFILE="$NM_DIR/system-connections/printserver-eth.nmconnection"
+cat > "$ETH_PROFILE" <<EOF
+[connection]
+id=printserver-eth
+type=ethernet
+interface-name=$ETH_IF
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=auto
+route-metric=100
+
+[ipv6]
+method=ignore
+EOF
+chmod 0600 "$ETH_PROFILE"
+log "wrote NM profile for $ETH_IF (DHCP)"
+
+if [[ "$MODE" == "hotspot" ]] && ip link show "$WLAN_IF" >/dev/null 2>&1; then
+    ip link set "$WLAN_IF" down 2>/dev/null || true
+    ip addr flush dev "$WLAN_IF" 2>/dev/null || true
+    ip addr add "$HOTSPOT_IP/24" dev "$WLAN_IF"
+    ip link set "$WLAN_IF" up
+    log "$WLAN_IF ready with $HOTSPOT_IP/24"
+fi
+
+if [[ -f /etc/printserver/nftables.conf ]] && command -v nft >/dev/null 2>&1; then
+    nft -f /etc/printserver/nftables.conf 2>/dev/null \
+        && log "nftables loaded (SSH blocked on $WLAN_IF)" \
+        || log "nftables load failed (not critical)"
+fi
+
+log "network config ready"

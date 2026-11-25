@@ -1,0 +1,15 @@
+{{define "content"}}
+<h1>Diagnóstico</h1>
+{{if .Checks}}
+<dl class="rows">
+  {{range .Checks}}
+  <div class="row">
+    <dt>{{.Label}}</dt>
+    <dd class="{{if eq .Status "ok"}}badge ok{{else if eq .Status "warn"}}badge warn{{else}}badge err{{end}}">{{.Detail}}</dd>
+  </div>
+  {{end}}
+</dl>
+{{else}}
+<p>Sem dados ainda.</p>
+{{end}}
+{{end}}

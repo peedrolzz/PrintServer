@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "[seal] run as root" >&2
+    exit 1
+fi
+
+if [[ "${1:-}" != "--yes-really-seal" ]]; then
+    cat <<MSG
+Usage:
+  $0 --yes-really-seal
+
+This will DESTROY all per-device state on the current SD. Only run on
+the master image Pi, then poweroff (do NOT reboot) and take the SD out.
+MSG
+    exit 2
+fi
+
+echo "[seal] stopping services"
+systemctl stop printserver-agent.service printserver-bridge.service printserver-portal.service printserver-discover.service 2>/dev/null || true
+
+echo "[seal] wiping per-device state"
+rm -rf /var/lib/printserver/credentials/*
+rm -f  /var/lib/printserver/journal.json
+rm -f  /var/lib/printserver/state.json
+rm -f  /etc/printserver/device.json
+rm -f  /etc/printserver/manager.json
+rm -f  /etc/printserver/printers.json
+echo "{\"printers\":[]}" > /etc/printserver/printers.json
+chmod 0644 /etc/printserver/printers.json
+
+echo "[seal] removing NM profiles"
+for f in /etc/NetworkManager/system-connections/*; do
+    [[ -f "$f" ]] && rm -f "$f"
+done
+
+echo "[seal] removing SSH host keys (V26 mitigation)"
+rm -f /etc/ssh/ssh_host_*
+rm -f /home/*/.ssh/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true
+
+echo "[seal] removing developer artifacts (V25/V28)"
+rm -rf /home/*/.codex /home/*/.cursor /home/*/.claude /home/*/.config/github-copilot
+rm -rf /home/*/.local/bin/codex /home/*/.local/share/codex
+
+echo "[seal] removing history (V27/V29)"
+find /home /root -name '.bash_history' -type f -delete 2>/dev/null || true
+find /home /root -name '.lesshst' -type f -delete 2>/dev/null || true
+find /home /root -name '.viminfo' -type f -delete 2>/dev/null || true
+
+echo "[seal] removing backups (V11/V13)"
+find /opt -name '*.backup*' -o -name '*.bak' -o -name '*.old' -type f -delete 2>/dev/null || true
+find /etc -name '*.backup*' -o -name '*.bak' -o -name '*.old' -type f -delete 2>/dev/null || true
+
+echo "[seal] removing non-product sudoers drop-ins (V23)"
+for f in /etc/sudoers.d/*; do
+    name="$(basename "$f")"
+    case "$name" in
+        README|010_at-export|010_dpkg-threads|010_global-tty|010_proxy)
+            ;;
+        *)
+            echo "[seal]   dropping $f"
+            rm -f "$f"
+            ;;
+    esac
+done
+
+echo "[seal] forcing SSH key-only auth (V02/V06)"
+install -d -m 0755 /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/00-printserver.conf <<'EOF'
+PasswordAuthentication no
+PermitRootLogin no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+EOF
+if [[ -f /etc/ssh/sshd_config.d/50-cloud-init.conf ]]; then
+    sed -i -E 's/^PasswordAuthentication\s+yes/PasswordAuthentication no/' \
+        /etc/ssh/sshd_config.d/50-cloud-init.conf
+fi
+
+echo "[seal] blocking SSH on the hotspot interface (V17)"
+install -d -m 0755 /etc/printserver
+cat > /etc/printserver/nftables.conf <<'EOF'
+table inet printserver {
+    chain input {
+        type filter hook input priority 0;
+        iifname "wlan0" tcp dport 22 drop
+    }
+}
+EOF
+chmod 0644 /etc/printserver/nftables.conf
+
+echo "[seal] cloud-init clean (V20)"
+if command -v cloud-init >/dev/null; then
+    cloud-init clean --logs --machine-id || true
+fi
+rm -rf /var/lib/cloud/instances/* /var/lib/cloud/data/*
+
+echo "[seal] machine-id"
+: > /etc/machine-id
+
+echo "[seal] marking firstboot.flag"
+install -d -m 0755 /etc/printserver
+: > /etc/printserver/firstboot.flag
+chmod 0600 /etc/printserver/firstboot.flag
+
+echo "[seal] vacuuming journals"
+journalctl --rotate >/dev/null 2>&1 || true
+journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+
+sync
+cat <<MSG
+
+[seal] DONE. Now:
+  1. poweroff  (NOT reboot)
+  2. remove SD
+  3. image it with dd/rpi-imager
+  4. next boot regenerates device identity, admin pw, tls cert
+
+MSG

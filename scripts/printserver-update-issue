@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CRED_DIR=/var/lib/printserver/credentials
+CONFIG_DIR=/etc/printserver
+TOOL=/usr/bin/printserver-tool
+
+if [[ ! -f "$CONFIG_DIR/device.json" ]]; then
+    exit 0
+fi
+
+DEVICE_ID="$("$TOOL" device-id "$CONFIG_DIR/device.json" 2>/dev/null || echo UNKNOWN)"
+HOSTNAME="$(hostname 2>/dev/null || echo printserver)"
+ETH_IP="$(ip -4 -br addr show eth0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+WLAN_IP="$(ip -4 -br addr show wlan0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+SSID="$(grep -E '^ssid=' /etc/printserver/hostapd.conf 2>/dev/null | cut -d= -f2)"
+
+cat > /etc/issue <<EOF
+
+  PrintServer
+
+  Device ID:   $DEVICE_ID
+  Hostname:    $HOSTNAME.local
+
+  WiFi SSID:   $SSID
+  WiFi senha:  printserver
+  Panel URL:   https://$WLAN_IP (hotspot)
+               https://${ETH_IP:-eth0-down} (ethernet)
+  Senha inicial do painel: printserver
+  (o painel exige a troca no primeiro acesso)
+
+EOF
+chmod 0644 /etc/issue

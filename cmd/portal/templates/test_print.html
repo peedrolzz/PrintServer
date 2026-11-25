@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>Teste de impressão</h1>
+{{if .Message}}<div class="msg ok">{{.Message}}</div>{{end}}
+{{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
+{{if not .Printers}}
+<p>Nenhuma impressora USB.</p>
+{{else}}
+<ul class="list">
+  {{range .Printers}}
+  <li>
+    <form method="post" action="/test-print" style="display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="serial" value="{{.SerialNumber}}">
+      <span>{{.Name}}</span>
+      <button class="btn primary" style="width:auto;min-height:44px;padding:8px 14px" type="submit">Imprimir</button>
+    </form>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+{{end}}

@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>Escolha as senhas</h1>
+<p>Troque a senha inicial <span class="mono">printserver</span> do painel e do WiFi. Mínimo de 8 caracteres.</p>
+{{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
+<form method="post" action="/first-run" autocomplete="off">
+  <h2>Painel</h2>
+  <div class="field">
+    <label for="new">Nova senha do painel</label>
+    <input id="new" name="new" type="password" required minlength="8" autofocus autocomplete="new-password">
+  </div>
+  <div class="field">
+    <label for="confirm">Repetir senha do painel</label>
+    <input id="confirm" name="confirm" type="password" required minlength="8" autocomplete="new-password">
+  </div>
+  <h2>WiFi</h2>
+  <div class="field">
+    <label for="wifi">Nova senha do WiFi</label>
+    <input id="wifi" name="wifi" type="password" required minlength="8" autocomplete="new-password">
+  </div>
+  <div class="field">
+    <label for="wifi-confirm">Repetir senha do WiFi</label>
+    <input id="wifi-confirm" name="wifi_confirm" type="password" required minlength="8" autocomplete="new-password">
+  </div>
+  <button class="btn primary" type="submit">Salvar</button>
+</form>
+{{end}}

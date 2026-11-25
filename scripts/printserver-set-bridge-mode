@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-}"
+case "$MODE" in
+    auth|open) ;;
+    *) echo "usage: $0 auth|open" >&2; exit 2 ;;
+esac
+
+if [[ "$MODE" == "open" ]]; then
+    touch /etc/printserver/bridge-open
+    chmod 0644 /etc/printserver/bridge-open
+    echo "[bridge-mode] open (no HMAC handshake)"
+else
+    rm -f /etc/printserver/bridge-open
+    echo "[bridge-mode] auth (HMAC handshake required)"
+fi
+
+systemctl restart printserver-bridge.service

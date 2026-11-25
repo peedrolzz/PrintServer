@@ -1,0 +1,23 @@
+[Unit]
+Description=PrintServer USB Discovery (one-shot)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/printserver-discover --config=/etc/printserver/printers.json
+TimeoutStartSec=30s
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/printserver
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+SystemCallFilter=@system-service
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

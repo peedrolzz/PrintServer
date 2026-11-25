@@ -1,0 +1,18 @@
+[Unit]
+Description=PrintServer recovery: check boot partition for the reset-hotspot marker
+Documentation=https://github.com/printserver/printserver
+Before=printserver-network.service
+RequiresMountsFor=/boot /boot/firmware
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/printserver-recovery
+RemainAfterExit=no
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/printserver /boot /boot/firmware
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

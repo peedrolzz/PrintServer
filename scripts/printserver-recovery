@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+install -d -o root -g root -m 0755 /etc/printserver
+
+for marker in /boot/firmware/reset-hotspot /boot/reset-hotspot; do
+    if [[ -f "$marker" ]]; then
+        printf 'hotspot\n' > /etc/printserver/mode
+        chmod 0644 /etc/printserver/mode
+        rm -f "$marker"
+        echo "[recovery] mode reset to hotspot via $marker"
+        exit 0
+    fi
+done

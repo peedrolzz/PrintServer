@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 0077
+
+STATE_DIR=/var/lib/printserver
+CRED_DIR="$STATE_DIR/credentials"
+CONFIG_DIR=/etc/printserver
+FLAG="$CONFIG_DIR/firstboot.flag"
+LOG=/var/log/printserver-firstboot.log
+PRINT_USER=printserver
+PRINT_GROUP=printserver
+TOOL=/usr/bin/printserver-tool
+
+log() {
+    local ts
+    ts="$(date -Iseconds)"
+    printf '[%s] %s\n' "$ts" "$*" >> "$LOG"
+    printf '[firstboot] %s\n' "$*"
+}
+
+[[ -f "$FLAG" ]] || { log "no firstboot.flag, nothing to do"; exit 0; }
+
+log "starting"
+
+install -d -o root -g root -m 0755 "$CONFIG_DIR"
+install -d -o root -g "$PRINT_GROUP" -m 0750 "$STATE_DIR"
+install -d -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0700 "$CRED_DIR"
+
+PRESEED=""
+for candidate in /boot/firmware/printserver-preseed.json /boot/printserver-preseed.json; do
+    if [[ -f "$candidate" ]]; then
+        PRESEED="$candidate"
+        log "using preseed $PRESEED"
+        break
+    fi
+done
+
+if [[ -n "$PRESEED" ]]; then
+    python3 -c "import json,sys;d=json.load(open(sys.argv[1]))['device'];open(sys.argv[2],'w').write(json.dumps(d,indent=2))" \
+        "$PRESEED" "$CONFIG_DIR/device.json"
+    chmod 0644 "$CONFIG_DIR/device.json"
+    DEVICE_ID="$("$TOOL" device-id "$CONFIG_DIR/device.json")"
+else
+    DEVICE_ID="$("$TOOL" init-identity "$CONFIG_DIR/device.json" | tail -1)"
+    chmod 0644 "$CONFIG_DIR/device.json"
+fi
+
+SUFFIX="${DEVICE_ID#PS-}"
+SUFFIX="${SUFFIX: -4}"
+SUFFIX="${SUFFIX,,}"
+NEW_HOSTNAME="printserver-${SUFFIX}"
+printf '%s\n' "$NEW_HOSTNAME" > /etc/hostname
+hostname "$NEW_HOSTNAME"
+if grep -qE '^127\.0\.1\.1' /etc/hosts; then
+    sed -i -E "s/^127\.0\.1\.1\s+.*/127.0.1.1\t${NEW_HOSTNAME}/" /etc/hosts
+else
+    printf '127.0.1.1\t%s\n' "$NEW_HOSTNAME" >> /etc/hosts
+fi
+log "hostname set to $NEW_HOSTNAME"
+
+ADMIN_PW="printserver"
+HOTSPOT_PW="printserver"
+HASH="$(printf '%s\n' "$ADMIN_PW" | "$TOOL" hash-password)"
+BRIDGE_TOKEN="$(openssl rand -hex 32)"
+
+install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/portal-admin"
+printf '%s\n' "$HASH" > "$CRED_DIR/portal-admin"
+
+install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/hotspot-password"
+printf '%s\n' "$HOTSPOT_PW" > "$CRED_DIR/hotspot-password"
+
+install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/bridge-token"
+printf '%s\n' "$BRIDGE_TOKEN" > "$CRED_DIR/bridge-token"
+
+install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/first-run.flag"
+log "first-run flag set"
+
+PRIMARY_IP="$(hostname -I | awk '{print $1}')"
+SAN="subjectAltName=DNS:$NEW_HOSTNAME.local,DNS:$NEW_HOSTNAME,DNS:printserver.local,IP:10.42.0.1"
+if [[ -n "$PRIMARY_IP" ]]; then
+    SAN="${SAN},IP:${PRIMARY_IP}"
+fi
+openssl req -x509 -newkey rsa:2048 -nodes \
+    -out "$CRED_DIR/portal-cert.pem" \
+    -keyout "$CRED_DIR/portal-key.pem" \
+    -subj "/CN=$NEW_HOSTNAME.local" \
+    -addext "$SAN" \
+    -days 3650 >/dev/null 2>&1
+chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-cert.pem" "$CRED_DIR/portal-key.pem"
+chmod 0600 "$CRED_DIR/portal-key.pem"
+chmod 0644 "$CRED_DIR/portal-cert.pem"
+PORTAL_FP="$("$TOOL" fingerprint-sha256 "$CRED_DIR/portal-cert.pem")"
+
+rm -f /etc/ssh/ssh_host_*
+if command -v ssh-keygen >/dev/null; then
+    ssh-keygen -A
+fi
+
+install -d -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0750 "$CRED_DIR/enterprise-ca"
+
+log "device id: $DEVICE_ID"
+log "hostname: $NEW_HOSTNAME.local"
+log "hotspot ssid: PrintServer-${DEVICE_ID: -4}"
+log "hotspot password: $HOTSPOT_PW"
+log "panel login: printserver (change on first access)"
+log "tls sha-256: $PORTAL_FP"
+
+if [[ -n "$PRESEED" ]]; then
+    shred -u -n 1 "$PRESEED" 2>/dev/null || rm -f "$PRESEED"
+    log "preseed shredded from boot partition"
+fi
+
+for f in /boot/firmware/user-data /boot/user-data; do
+    if [[ -f "$f" ]]; then
+        shred -u -n 1 "$f" 2>/dev/null || rm -f "$f"
+        log "cloud-init user-data shredded from $f"
+    fi
+done
+if command -v cloud-init >/dev/null 2>&1; then
+    cloud-init clean --logs --machine-id >/dev/null 2>&1 || true
+fi
+rm -rf /var/lib/cloud/instances/*/user-data* 2>/dev/null || true
+
+rm -f "$FLAG"
+log "firstboot complete"

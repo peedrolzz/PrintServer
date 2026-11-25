@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 0077
+
+NM_DIR=/etc/NetworkManager/system-connections
+CA_ROOT=/var/lib/printserver/credentials/enterprise-ca
+
+log() { printf '[wifi-profile] %s\n' "$*" >&2; }
+fail() { log "$*"; exit 2; }
+
+TYPE="${1:-}"
+[[ "$TYPE" == "open" || "$TYPE" == "personal" || "$TYPE" == "enterprise" ]] || fail "invalid type"
+
+SSID="${2:-}"
+[[ -n "$SSID" && ${#SSID} -le 32 && "$SSID" != *$'\n'* && "$SSID" != *$'\r'* ]] || fail "invalid SSID"
+
+safe=""
+for (( i=0; i<${#SSID}; i++ )); do
+    c="${SSID:i:1}"
+    case "$c" in
+        [A-Za-z0-9_-]) safe+="$c" ;;
+    esac
+done
+[[ -n "$safe" ]] || fail "SSID has no usable characters"
+
+esc() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+connection="wifi-${safe}"
+file="$NM_DIR/${connection}.nmconnection"
+uuid="$(cat /proc/sys/kernel/random/uuid)"
+
+{
+    printf '[connection]\n'
+    printf 'id=%s\n' "$(esc "$SSID")"
+    printf 'uuid=%s\n' "$uuid"
+    printf 'type=wifi\n'
+    printf 'autoconnect=true\n'
+    printf 'autoconnect-priority=100\n'
+    printf '\n[wifi]\n'
+    printf 'mode=infrastructure\n'
+    printf 'ssid=%s\n' "$(esc "$SSID")"
+    printf '\n[ipv4]\n'
+    printf 'method=auto\n'
+    printf '\n[ipv6]\n'
+    printf 'method=ignore\n'
+
+    if [[ "$TYPE" == "open" ]]; then
+        printf '\n[wifi-security]\n'
+        printf 'key-mgmt=none\n'
+    elif [[ "$TYPE" == "personal" ]]; then
+        pw="${3:-}"
+        [[ ${#pw} -ge 8 ]] || fail "WPA password must have at least 8 characters"
+        printf '\n[wifi-security]\n'
+        printf 'key-mgmt=wpa-psk\n'
+        printf 'psk=%s\n' "$(esc "$pw")"
+    else
+        user="${3:-}"
+        pw="${4:-}"
+        validate="${5:-0}"
+        ca="${6:-none}"
+        [[ -n "$user" && -n "$pw" ]] || fail "user and password required"
+        [[ "$validate" == "1" || "$validate" == "0" ]] || fail "invalid validate flag"
+        if [[ "$validate" == "1" && "$ca" != "none" ]]; then
+            [[ "$ca" == "$CA_ROOT"/* ]] || fail "CA path outside the store"
+            [[ -f "$ca" ]] || fail "CA file not found"
+        else
+            ca=""
+        fi
+
+        printf '\n[wifi-security]\n'
+        printf 'key-mgmt=wpa-eap\n'
+        printf '\n[802-1x]\n'
+        printf 'eap=peap\n'
+        printf 'identity=%s\n' "$(esc "$user")"
+        printf 'password=%s\n' "$(esc "$pw")"
+        printf 'phase2-auth=mschapv2\n'
+        if [[ "$validate" == "1" ]]; then
+            printf 'system-ca-certs=true\n'
+            [[ -n "$ca" ]] && printf 'ca-cert=%s\n' "$(esc "$ca")"
+        else
+            printf 'system-ca-certs=false\n'
+        fi
+    fi
+} >"$file.tmp.$$"
+
+chmod 0600 "$file.tmp.$$"
+chown root:root "$file.tmp.$$"
+mv -f "$file.tmp.$$" "$file"
+
+for old in "$NM_DIR"/*.nmconnection; do
+    [[ -f "$old" && "$old" != "$file" ]] || continue
+    grep -q '^type=wifi$' "$old" || continue
+    sed -i 's/^autoconnect=true$/autoconnect=false/' "$old" || true
+done
+
+install -d -o root -g root -m 0755 /etc/printserver
+printf '%s\n' "$SSID" > /etc/printserver/wifi-ssid
+chmod 0644 /etc/printserver/wifi-ssid
+
+/usr/bin/nmcli connection reload >/dev/null 2>&1 || true
+
+log "wrote $file ($TYPE, ssid=$SSID)"
