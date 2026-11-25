@@ -51,6 +51,15 @@ Base 4px. Escala 4/8/12/16/20/24. Alvos de toque com no mínimo 44px.
 No cabeçalho, `Voltar` ocupa o lugar de `Início` nas páginas internas e leva
 ao painel principal. Na tela inicial e no primeiro acesso não há `Voltar`.
 
+## Endereço e primeiro acesso
+Antes da queda do hotspot, mostrar sempre `printserver-<id>.local`, nunca
+`10.42.0.1`. O IP do hotspot deixa de existir quando o equipamento troca de
+rede. Vale para o portal cativo e para as telas `wifi_connecting`,
+`wifi_scanning` e `password_wifi_saved`.
+
+A dica `Senha inicial: printserver` aparece no login somente enquanto o
+primeiro acesso não foi concluído. Depois da troca de senha, some.
+
 ## Estado da tela inicial
 O título diz o que falta: `Sem impressora`, `Sem rede` ou
 `Sem rede nem impressora`. Nunca usar `Verificando`. A orientação fica logo

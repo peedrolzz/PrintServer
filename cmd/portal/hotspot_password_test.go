@@ -39,6 +39,18 @@ func TestWriteHotspotPassword(t *testing.T) {
 	}
 }
 
+func TestPanelHostFrom(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"printserver-f39f", "printserver-f39f.local"},
+		{"printserver-f39f.local", "printserver-f39f.local"},
+		{"", "printserver.local"},
+	} {
+		if got := panelHostFrom(tc.in); got != tc.want {
+			t.Errorf("%q -> %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestSafeReturnHost(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"172.16.113.75", "172.16.113.75"},

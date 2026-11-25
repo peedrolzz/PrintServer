@@ -9,6 +9,6 @@
            autocapitalize="off" autocorrect="off" spellcheck="false">
   </div>
   <button class="btn primary" type="submit">Entrar</button>
-  <p class="hint">Senha inicial: <span class="mono">printserver</span></p>
+  {{if .ShowInitialPW}}<p class="hint">Senha inicial: <span class="mono">printserver</span></p>{{end}}
 </form>
 {{end}}

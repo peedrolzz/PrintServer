@@ -30,6 +30,7 @@ log "mode=$MODE"
 DEVICE_ID="$(/usr/bin/printserver-tool device-id "$CONFIG_DIR/device.json")"
 SUFFIX="${DEVICE_ID##*-}"
 SUFFIX="${SUFFIX: -4}"
+HOST_SUFFIX="${SUFFIX,,}"
 SSID="PrintServer-${SUFFIX}"
 PSK="$(< "$CRED_DIR/hotspot-password")"
 
@@ -70,6 +71,7 @@ dhcp-option=6,$HOTSPOT_IP
 
 address=/printserver.local/$HOTSPOT_IP
 address=/printserver/$HOTSPOT_IP
+address=/printserver-${HOST_SUFFIX}.local/$HOTSPOT_IP
 
 address=/captive.apple.com/$HOTSPOT_IP
 address=/apple.com/$HOTSPOT_IP

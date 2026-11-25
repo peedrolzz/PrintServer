@@ -214,7 +214,7 @@ func main() {
 	go func() {
 		captive := &http.Server{
 			Addr:              ":80",
-			Handler:           captivePortalHandler(),
+			Handler:           captivePortalHandler(panelHost()),
 			ReadHeaderTimeout: readHeaderTimeout,
 			WriteTimeout:      writeTimeout,
 			IdleTimeout:       idleTimeout,
@@ -230,22 +230,28 @@ func main() {
 	}
 }
 
-// captivePortalHost devolve o endereço do painel para o cliente da porta 80.
-// As sondas de captive portal chegam com Host de domínios externos porque o
-// dnsmasq do hotspot responde por eles (captive.apple.com, por exemplo).
-// Usar esse Host mostraria o domínio da sonda no celular. O destino real da
-// conexão está em LocalAddr, que é o IP pelo qual o cliente chegou.
-func captivePortalHost(r *http.Request) string {
-	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr); ok &&
-		addr.IP != nil && !addr.IP.IsUnspecified() {
-		return addr.IP.String()
-	}
-	return safeReturnHost(r)
+// panelHost devolve o endereço estável do painel. O IP do hotspot morre quando
+// o equipamento troca de rede; o nome printserver-<id>.local continua válido
+// na rede nova e evita que o celular mostre "visite 10.42.0.1".
+func panelHost() string {
+	return panelHostFrom(readHostname())
 }
 
-func captivePortalHandler() http.Handler {
+func panelHostFrom(hostname string) string {
+	host := strings.TrimSpace(hostname)
+	if host == "" {
+		return "printserver.local"
+	}
+	host = strings.TrimSuffix(host, ".")
+	if strings.HasSuffix(strings.ToLower(host), ".local") {
+		return host
+	}
+	return host + ".local"
+}
+
+func captivePortalHandler(host string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		portalURL := "https://" + captivePortalHost(r) + "/"
+		portalURL := "https://" + host + "/"
 		switch r.URL.Path {
 		case "/generate_204",
 			"/gen_204",
@@ -284,13 +290,18 @@ func envOr(k, def string) string {
 	return def
 }
 
+func (a *app) firstRunPending() bool {
+	_, err := os.Stat(a.firstRunPath)
+	return err == nil
+}
+
 func (a *app) requireFirstRunDone(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/first-run" || r.URL.Path == "/logout" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if _, err := os.Stat(a.firstRunPath); err == nil {
+		if a.firstRunPending() {
 			http.Redirect(w, r, "/first-run", http.StatusSeeOther)
 			return
 		}
@@ -349,6 +360,7 @@ type pageData struct {
 	Title          string
 	Authenticated  bool
 	ShowBack       bool
+	ShowInitialPW  bool
 	CSRF           string
 	DeviceID       string
 	ShortID        string
@@ -451,7 +463,7 @@ func (a *app) getLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "csrf", http.StatusInternalServerError)
 		return
 	}
-	a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf})
+	a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, ShowInitialPW: a.firstRunPending()})
 }
 
 func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
@@ -461,13 +473,13 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.loginLimit.Blocked(auth.HTTPKey(r)) {
 		csrf, _ := auth.IssueCSRF(w, r)
-		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Muitas tentativas. Aguarde 1 minuto."})
+		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Muitas tentativas. Aguarde 1 minuto.", ShowInitialPW: a.firstRunPending()})
 		return
 	}
 	pw := validate.Password(r.FormValue("password"))
 	if pw == "" {
 		csrf, _ := auth.IssueCSRF(w, r)
-		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Informe a senha."})
+		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Informe a senha.", ShowInitialPW: a.firstRunPending()})
 		return
 	}
 	phc, err := os.ReadFile(a.adminHashPath)
@@ -481,7 +493,7 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 		a.loginLimit.Record(auth.HTTPKey(r))
 		a.log.Warn("portal: login failed", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
 		csrf, _ := auth.IssueCSRF(w, r)
-		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Senha incorreta."})
+		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Senha incorreta.", ShowInitialPW: a.firstRunPending()})
 		return
 	}
 	if err := a.sess.Issue(w); err != nil {
@@ -552,7 +564,7 @@ func (a *app) postWifiScan(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		CSRF:          csrf,
 		Hostname:      readHostname(),
-		ReturnHost:    safeReturnHost(r),
+		ReturnHost:    panelHost(),
 	})
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -747,7 +759,7 @@ func (a *app) postWifiConnect(w http.ResponseWriter, r *http.Request) {
 		CSRF:          csrf,
 		Message:       ssid,
 		Hostname:      readHostname(),
-		ReturnHost:    safeReturnHost(r),
+		ReturnHost:    panelHost(),
 	})
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
@@ -883,7 +895,7 @@ func (a *app) saveHotspotPage(w http.ResponseWriter, r *http.Request, msg string
 		Authenticated: true,
 		CSRF:          csrf,
 		Message:       msg,
-		ReturnHost:    safeReturnHost(r),
+		ReturnHost:    panelHost(),
 	})
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
