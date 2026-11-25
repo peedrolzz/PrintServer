@@ -50,7 +50,8 @@ Base 4px. Escala 4/8/12/16/20/24. Alvos de toque com no mínimo 44px.
 ## Impressão
 `Aberta` é o padrão e aparece primeiro, com badge verde de ativo. `Com token`
 é opção e pede confirmação antes de ativar. Textos curtos: "Qualquer máquina
-da rede imprime" e "Só o PDV cadastrado imprime".
+da rede imprime" e "Só quem tiver o token imprime". O token gerado pela Pi
+aparece na mesma tela em campo somente leitura, com botão Copiar.
 
 ## Navegação
 No cabeçalho, `Voltar` ocupa o lugar de `Início` nas páginas internas e leva

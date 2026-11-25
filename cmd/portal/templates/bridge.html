@@ -20,15 +20,47 @@
 <div class="choice">
   <div>
     <strong>Com token</strong>
-    <p>Só o PDV cadastrado imprime.</p>
+    <p>Só quem tiver o token imprime.</p>
   </div>
   {{if .BridgeOpen}}
-  <form method="post" action="/bridge" onsubmit="return confirm('Ativar impressão só para o PDV cadastrado?')">
+  <form method="post" action="/bridge" onsubmit="return confirm('Ativar impressão só para quem tiver o token?')">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <input type="hidden" name="mode" value="auth">
     <button class="btn danger" type="submit">Ativar</button>
   </form>
   {{else}}<span class="badge warn">ativo</span>{{end}}
 </div>
+
+<h2>Token</h2>
+{{if .BridgeToken}}
+<p>Copie este valor para o sistema que imprime.</p>
+<div class="token-row">
+  <input id="bridge-token" class="mono" type="text" value="{{.BridgeToken}}" readonly>
+  <button class="btn" type="button" id="copy-token">Copiar</button>
+</div>
+<p class="hint" id="copy-status" aria-live="polite"></p>
+<script>
+(function(){
+  var field=document.getElementById('bridge-token');
+  var button=document.getElementById('copy-token');
+  var status=document.getElementById('copy-status');
+  button.addEventListener('click',function(){
+    function done(ok){
+      status.textContent=ok?'Token copiado.':'Selecione o valor e copie.';
+      if(!ok){field.focus();field.select();}
+    }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(field.value).then(function(){done(true)},function(){done(false)});
+      return;
+    }
+    field.focus();
+    field.select();
+    done(document.execCommand('copy'));
+  });
+})();
+</script>
+{{else}}
+<p class="msg err">Não foi possível ler o token.</p>
+{{end}}
 
 {{end}}

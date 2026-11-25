@@ -74,8 +74,11 @@ endereço da Pi. No modo padrão, basta abrir a conexão e escrever.
 
 Se o operador ativar o modo com token no painel, o cliente precisa enviar
 antes um handshake de 60 bytes: magic `CPJ1`, nonce, timestamp e
-HMAC-SHA256 com o segredo compartilhado. O segredo fica em
-`/var/lib/printserver/credentials/bridge-token` e não é exibido no painel.
+HMAC-SHA256 com o segredo compartilhado. O segredo é gerado pela própria Pi
+no primeiro boot, fica em `/var/lib/printserver/credentials/bridge-token` e
+pode ser copiado no painel, na tela de Impressão. Ele não é enviado
+automaticamente: alguém precisa repassar esse valor a quem configura o
+sistema que imprime. Cada equipamento tem o seu próprio segredo.
 
 ### 4. Recuperação
 
@@ -144,7 +147,9 @@ Controles implementados:
 
 A impressão aberta é uma escolha consciente: qualquer dispositivo que
 alcance a Pi na rede pode imprimir. Se isso não for desejado, ative o modo
-com token no painel.
+com token no painel. O segredo aparece na tela de Impressão somente para
+quem estiver logado, então a senha do painel continua sendo o ponto de
+proteção.
 
 ## Estrutura
 

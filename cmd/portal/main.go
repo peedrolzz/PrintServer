@@ -376,6 +376,7 @@ type pageData struct {
 	Hostname       string
 	ReturnHost     string
 	BridgeOpen     bool
+	BridgeToken    string
 	NearbyWifi     []wifiNetwork
 	ScannedAt      string
 }
@@ -644,6 +645,18 @@ func bridgeOpenFrom(markerPath string) bool {
 	return err != nil
 }
 
+// readBridgeToken devolve o segredo compartilhado da impressão, sem a quebra
+// de linha escrita no primeiro boot. O valor aparece no painel para que o
+// operador possa repassá-lo a quem configura o sistema que imprime.
+func (a *app) readBridgeToken() string {
+	raw, err := os.ReadFile(a.bridgeTokPath)
+	if err != nil {
+		a.log.Warn("portal: cannot read bridge token", "err", err)
+		return ""
+	}
+	return string(bytes.TrimRight(raw, "\r\n "))
+}
+
 func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
 	csrf, _ := auth.IssueCSRF(w, r)
 	a.render(w, "bridge", pageData{
@@ -651,6 +664,7 @@ func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		CSRF:          csrf,
 		BridgeOpen:    readBridgeOpen(),
+		BridgeToken:   a.readBridgeToken(),
 	})
 }
 
@@ -671,7 +685,7 @@ func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 		msg = "Impressão aberta. Qualquer máquina da rede pode imprimir."
 	case "auth":
 		action = "bridge-auth"
-		msg = "Impressão protegida. Só o PDV cadastrado pode imprimir."
+		msg = "Impressão protegida. Só quem tiver o token pode imprimir."
 	default:
 		errMsg = "Modo inválido."
 	}
@@ -687,6 +701,7 @@ func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		CSRF:          csrf,
 		BridgeOpen:    readBridgeOpen(),
+		BridgeToken:   a.readBridgeToken(),
 		Message:       msg,
 		Error:         errMsg,
 	})
