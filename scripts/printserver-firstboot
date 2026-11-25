@@ -58,6 +58,9 @@ else
 fi
 log "hostname set to $NEW_HOSTNAME"
 
+# Impressão aberta é o padrão. O modo com token só é ativado pelo painel.
+rm -f "$CONFIG_DIR/bridge-token-mode" "$CONFIG_DIR/bridge-open"
+
 ADMIN_PW="printserver"
 HOTSPOT_PW="printserver"
 HASH="$(printf '%s\n' "$ADMIN_PW" | "$TOOL" hash-password)"

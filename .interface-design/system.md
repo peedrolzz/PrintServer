@@ -47,6 +47,11 @@ Base 4px. Escala 4/8/12/16/20/24. Alvos de toque com no mínimo 44px.
 - Ações de Manutenção aparecem direto na tela, sob um título `h2`. Nunca
   usar `details`/`summary` para esconder botões principais.
 
+## Impressão
+`Aberta` é o padrão e aparece primeiro, com badge verde de ativo. `Com token`
+é opção e pede confirmação antes de ativar. Textos curtos: "Qualquer máquina
+da rede imprime" e "Só o PDV cadastrado imprime".
+
 ## Navegação
 No cabeçalho, `Voltar` ocupa o lugar de `Início` nas páginas internas e leva
 ao painel principal. Na tela inicial e no primeiro acesso não há `Voltar`.

@@ -50,6 +50,7 @@ const (
 	defaultHotspotPW     = "/var/lib/printserver/credentials/hotspot-password"
 	defaultCAStore       = "/var/lib/printserver/credentials/enterprise-ca"
 	defaultBridgeTok     = "/var/lib/printserver/credentials/bridge-token"
+	bridgeTokenModePath  = "/etc/printserver/bridge-token-mode"
 	defaultFirstRun      = "/var/lib/printserver/credentials/first-run.flag"
 	defaultListen        = "0.0.0.0:443"
 	maxRequestBody       = 16 * 1024
@@ -632,9 +633,15 @@ func readHostname() string {
 	return "printserver"
 }
 
+// readBridgeOpen diz se qualquer máquina da rede pode imprimir. O modo
+// protegido é opt-in: só existe quando o arquivo bridge-token-mode foi criado.
 func readBridgeOpen() bool {
-	_, err := os.Stat("/etc/printserver/bridge-open")
-	return err == nil
+	return bridgeOpenFrom(bridgeTokenModePath)
+}
+
+func bridgeOpenFrom(markerPath string) bool {
+	_, err := os.Stat(markerPath)
+	return err != nil
 }
 
 func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
@@ -661,10 +668,10 @@ func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 	switch mode {
 	case "open":
 		action = "bridge-open"
-		msg = "Modo aberto ativado. O PDV pode imprimir sem autenticação."
+		msg = "Impressão aberta. Qualquer máquina da rede pode imprimir."
 	case "auth":
 		action = "bridge-auth"
-		msg = "Modo protegido ativado. O PDV precisa enviar o token HMAC."
+		msg = "Impressão protegida. Só o PDV cadastrado pode imprimir."
 	default:
 		errMsg = "Modo inválido."
 	}
@@ -831,11 +838,6 @@ func (a *app) postTestPrint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) sendTestJob(p config.Printer) error {
-	tokenRaw, err := os.ReadFile(a.bridgeTokPath)
-	if err != nil {
-		return fmt.Errorf("token: %w", err)
-	}
-	token := bytes.TrimRight(tokenRaw, "\r\n ")
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(p.TCPPort))
 	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	if err != nil {
@@ -844,18 +846,25 @@ func (a *app) sendTestJob(p config.Printer) error {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
-	var h [60]byte
-	copy(h[:4], []byte("CPJ1"))
-	if _, err := rand.Read(h[4:20]); err != nil {
-		return err
-	}
-	binary.BigEndian.PutUint64(h[20:28], uint64(time.Now().UnixMilli()))
-	msg := append([]byte{}, h[:28]...)
-	msg = append(msg, []byte(strconv.Itoa(p.TCPPort))...)
-	mac := auth.RawHMAC(token, msg)
-	copy(h[28:60], mac)
-	if _, err := conn.Write(h[:]); err != nil {
-		return err
+	if !readBridgeOpen() {
+		tokenRaw, err := os.ReadFile(a.bridgeTokPath)
+		if err != nil {
+			return fmt.Errorf("token: %w", err)
+		}
+		token := bytes.TrimRight(tokenRaw, "\r\n ")
+		var h [60]byte
+		copy(h[:4], []byte("CPJ1"))
+		if _, err := rand.Read(h[4:20]); err != nil {
+			return err
+		}
+		binary.BigEndian.PutUint64(h[20:28], uint64(time.Now().UnixMilli()))
+		msg := append([]byte{}, h[:28]...)
+		msg = append(msg, []byte(strconv.Itoa(p.TCPPort))...)
+		mac := auth.RawHMAC(token, msg)
+		copy(h[28:60], mac)
+		if _, err := conn.Write(h[:]); err != nil {
+			return err
+		}
 	}
 
 	payload := []byte("\x1b@*** Teste PrintServer ***\n")

@@ -24,14 +24,27 @@ import (
 )
 
 const (
-	defaultConfig    = "/etc/printserver/printers.json"
-	defaultTokenPath = "/var/lib/printserver/credentials/bridge-token"
-	defaultBind      = "0.0.0.0"
-	maxJob           = 512 * 1024
-	jobTimeout       = 30 * time.Second
-	handshakeTimeout = 5 * time.Second
-	maxPerIPPerMin   = 10
+	defaultConfig       = "/etc/printserver/printers.json"
+	defaultTokenPath    = "/var/lib/printserver/credentials/bridge-token"
+	bridgeTokenModePath = "/etc/printserver/bridge-token-mode"
+	defaultBind         = "0.0.0.0"
+	maxJob              = 512 * 1024
+	jobTimeout          = 30 * time.Second
+	handshakeTimeout    = 5 * time.Second
+	maxPerIPPerMin      = 10
 )
+
+// bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
+// explicitamente o modo protegido. Sem esse arquivo a impressão é aberta a
+// qualquer máquina da rede, como uma impressora comum na porta 9100.
+func bridgeTokenModeEnabled() bool {
+	return bridgeTokenModeFrom(bridgeTokenModePath)
+}
+
+func bridgeTokenModeFrom(markerPath string) bool {
+	_, err := os.Stat(markerPath)
+	return err == nil
+}
 
 func main() {
 	cfgPath := flag.String("config", envOr("PRINTBRIDGE_CONFIG", defaultConfig), "printers.json path")
@@ -52,15 +65,16 @@ func main() {
 		slog.String("config", *cfgPath),
 	)
 
+	requireToken := bridgeTokenModeEnabled()
 	var token []byte
-	if tokenRaw, err := os.ReadFile(*tokenPath); err == nil {
+	if requireToken {
+		tokenRaw, err := os.ReadFile(*tokenPath)
+		if err != nil {
+			log.Error("bridge: cannot read token", "err", err)
+			os.Exit(1)
+		}
 		token = trimEOL(tokenRaw)
-	} else if _, statErr := os.Stat("/etc/printserver/bridge-open"); statErr != nil {
-		log.Error("bridge: cannot read token", "err", err)
-		os.Exit(1)
-	}
-	if len(token) < 32 {
-		if _, statErr := os.Stat("/etc/printserver/bridge-open"); statErr != nil {
+		if len(token) < 32 {
 			log.Error("bridge: token too short, require >=32 bytes")
 			os.Exit(1)
 		}
@@ -80,7 +94,7 @@ func main() {
 	signal.Notify(hup, syscall.SIGHUP)
 
 	for {
-		listeners := startListeners(log, *bind, cfg, token, rl)
+		listeners := startListeners(log, *bind, cfg, token, requireToken, rl)
 		select {
 		case <-ctx.Done():
 			closeAll(listeners)
@@ -99,7 +113,7 @@ func main() {
 	}
 }
 
-func startListeners(log *slog.Logger, bind string, cfg *config.Printers, token []byte, rl *auth.Limiter) []net.Listener {
+func startListeners(log *slog.Logger, bind string, cfg *config.Printers, token []byte, requireToken bool, rl *auth.Limiter) []net.Listener {
 	var out []net.Listener
 	for _, p := range cfg.Printers {
 		if !p.Enabled {
@@ -119,7 +133,7 @@ func startListeners(log *slog.Logger, bind string, cfg *config.Printers, token [
 			slog.Int("port", pr.TCPPort),
 			logger.HashedSerial(pr.SerialNumber),
 		)
-		go serve(log, ln, dev, pr, token, rl)
+		go serve(log, ln, dev, pr, token, requireToken, rl)
 	}
 	return out
 }
@@ -130,17 +144,17 @@ func closeAll(ls []net.Listener) {
 	}
 }
 
-func serve(log *slog.Logger, ln net.Listener, dev *printer.Device, p config.Printer, token []byte, rl *auth.Limiter) {
+func serve(log *slog.Logger, ln net.Listener, dev *printer.Device, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		go handle(log, conn, dev, p, token, rl)
+		go handle(log, conn, dev, p, token, requireToken, rl)
 	}
 }
 
-func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Printer, token []byte, rl *auth.Limiter) {
+func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
 	defer conn.Close()
 	host, _ := auth.SplitFirst(conn.RemoteAddr().String(), ":")
 	if host == "" {
@@ -150,7 +164,7 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 		log.Warn("bridge: rate limit", logger.ClientCIDR(conn.RemoteAddr()))
 		return
 	}
-	if _, err := os.Stat("/etc/printserver/bridge-open"); err == nil {
+	if !requireToken {
 		_ = conn.SetReadDeadline(time.Now().Add(jobTimeout))
 	} else {
 		_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))

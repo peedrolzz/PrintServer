@@ -5,30 +5,30 @@
 
 <div class="choice">
   <div>
-    <strong>Com token</strong>
-    <p>Só o PDV cadastrado imprime.</p>
+    <strong>Aberta</strong>
+    <p>Qualquer máquina da rede imprime.</p>
   </div>
-  {{if .BridgeOpen}}
+  {{if .BridgeOpen}}<span class="badge ok">ativo</span>{{else}}
   <form method="post" action="/bridge">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
-    <input type="hidden" name="mode" value="auth">
+    <input type="hidden" name="mode" value="open">
     <button class="btn primary" type="submit">Ativar</button>
   </form>
-  {{else}}<span class="badge ok">ativo</span>{{end}}
+  {{end}}
 </div>
 
 <div class="choice">
   <div>
-    <strong>Aberta</strong>
-    <p>Qualquer máquina da rede imprime.</p>
+    <strong>Com token</strong>
+    <p>Só o PDV cadastrado imprime.</p>
   </div>
-  {{if .BridgeOpen}}<span class="badge warn">ativo</span>{{else}}
-  <form method="post" action="/bridge" onsubmit="return confirm('Liberar impressão para toda a rede?')">
+  {{if .BridgeOpen}}
+  <form method="post" action="/bridge" onsubmit="return confirm('Ativar impressão só para o PDV cadastrado?')">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
-    <input type="hidden" name="mode" value="open">
+    <input type="hidden" name="mode" value="auth">
     <button class="btn danger" type="submit">Ativar</button>
   </form>
-  {{end}}
+  {{else}}<span class="badge warn">ativo</span>{{end}}
 </div>
 
 {{end}}

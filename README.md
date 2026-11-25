@@ -11,9 +11,10 @@ No cloud account, no mobile app, no vendor portal.
 ## What it does
 
 - Exposes any USB printer plugged into the Pi on TCP ports
-  `9100`-`9199`, reachable from the store LAN. Two modes:
-  **with token** (HMAC-SHA256 handshake, only the configured PDV can
-  print) or **open** (plain raw 9100, like a generic network printer).
+  `9100`-`9199`, reachable from the store LAN. The default is **open**:
+  plain raw 9100, like a generic network printer. The optional
+  **with token** mode requires an HMAC-SHA256 handshake, so only the
+  configured PDV can print.
 - Serves a tiny HTTPS panel for one-time setup. First access is
   `printserver` / `printserver`; the panel forces a password change
   before anything else.
@@ -34,7 +35,7 @@ No cloud account, no mobile app, no vendor portal.
 | Binary | Role |
 |---|---|
 | `printserver-portal` | HTTPS panel on 443 (plus a captive HTTP helper on 80). Login, WiFi setup, test print, password change, diagnostics, reboot, bridge mode toggle. |
-| `printserver-bridge` | Raw TCP 9100-9199. When token mode is on, requires an HMAC-SHA256 handshake, then writes bytes to `/dev/usb/lp*`. When open mode is on, acts like a plain network printer. |
+| `printserver-bridge` | Raw TCP 9100-9199. By default it writes bytes to `/dev/usb/lp*` like a plain network printer. When the operator turns on token mode, it requires an HMAC-SHA256 handshake first. |
 | `printserver-discover` | One-shot triggered by udev on USB plug. Registers the printer in `printers.json`. |
 | `printserver-helper` | Root-owned Unix socket daemon. Accepts a fixed whitelist of system actions (restart bridge, flip mode, reload USB, reboot). The only process that runs as root. |
 | `printserver-tool` | Small CLI helpers used by the firstboot scripts. |
@@ -63,12 +64,13 @@ From a phone or laptop:
 
 1. Connect to the WiFi `PrintServer-XXXX` using password
    `printserver`.
-2. The captive portal opens the panel at `https://10.42.0.1` by
-   itself. If it doesn't, type that URL in the browser.
+2. The captive portal opens the panel at
+   `https://printserver-XXXX.local` by itself. If it doesn't, type
+   that URL in the browser.
 3. Log in with password `printserver`.
-4. The panel asks for two new passwords: one for the admin, one for
-   the WiFi hotspot. Both have to be at least 8 characters and
-   different from `printserver`.
+4. The panel asks for a new admin password, at least 8 characters.
+   The hotspot WiFi password stays `printserver` until you change it
+   on the WiFi page.
 5. Open the WiFi section, pick the store network, enter credentials.
    For 802.1X enterprise networks the certificate is optional (opt-in).
 6. The device connects to the chosen WiFi. The hotspot goes down.
@@ -77,12 +79,12 @@ From a phone or laptop:
 
 ### 3. Point-of-sale talks to the printer
 
-The PDV sends ESC/POS bytes to `9100-9199` on the Pi's address. In
-**token mode** it must send a 60-byte handshake first (magic
-`CPJ1` + nonce + timestamp + HMAC-SHA256(token, msg)). In **open
-mode** it just opens the socket and writes. The token is in
-`/var/lib/printserver/credentials/bridge-token` and is shown in the
-panel for the integrator.
+The PDV sends ESC/POS bytes to `9100-9199` on the Pi's address. By
+default it just opens the socket and writes, so any machine on the
+same WiFi can print. If the operator turns on **token mode**, the PDV
+must send a 60-byte handshake first (magic `CPJ1` + nonce + timestamp
++ HMAC-SHA256(token, msg)). The token is in
+`/var/lib/printserver/credentials/bridge-token`.
 
 ### 4. Recovery
 
@@ -130,7 +132,7 @@ Just the basics that matter when the Pi sits on a customer LAN:
 - Per-device admin password; forced change on first login.
 - Argon2id for the admin password hash.
 - CSRF double-submit on every form.
-- Login rate limit (3 attempts per minute per source IP).
+- Login rate limit (10 wrong passwords per minute per source IP).
 - HSTS, CSP, X-Frame-Options, X-Content-Type-Options,
   Referrer-Policy, Permissions-Policy on every response. No `Server`
   header.
@@ -139,9 +141,9 @@ Just the basics that matter when the Pi sits on a customer LAN:
   probes for every major OS. Anything else returns REFUSED.
 - `nftables` drops TCP/22 on the hotspot interface. SSH is Ethernet
   only.
-- Bridge in token mode refuses connections without a valid HMAC
-  handshake. In open mode it accepts raw bytes, like any generic
-  network printer.
+- Bridge starts in open mode and accepts raw bytes, like any generic
+  network printer. Token mode is opt-in and refuses connections
+  without a valid HMAC handshake.
 - Every systemd unit is hardened (`ProtectSystem=strict`,
   `NoNewPrivileges`, minimal capability set). Only the helper runs as
   root and it only runs commands from a hard-coded list.
