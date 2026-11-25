@@ -1,8 +1,5 @@
 {{define "content"}}
-<meta http-equiv="refresh" content="25;url=https://{{.ReturnHost}}/wifi">
-<h1>Conectando</h1>
-<p>Tentando entrar em <span class="mono">{{.Message}}</span>. O hotspot vai sair do ar.</p>
-<p>Conecte o celular na mesma rede e abra
-   <span class="mono">https://{{.ReturnHost}}</span>.</p>
-<p><a href="https://{{.ReturnHost}}/wifi">Abrir painel na nova rede</a></p>
+<h1>Trocando para {{.Message}}</h1>
+<p>O hotspot <span class="mono">PrintServer</span> vai sair do ar.</p>
+<p>Conecte o celular na mesma rede e abra <span class="mono">https://{{.ReturnHost}}</span>.</p>
 {{end}}

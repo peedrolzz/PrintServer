@@ -41,10 +41,10 @@ import (
 var tplFS embed.FS
 
 const (
-	defaultConfigDir = "/etc/printserver"
-	defaultStateDir  = "/var/lib/printserver"
-	defaultTLSCert   = "/var/lib/printserver/credentials/portal-cert.pem"
-	defaultTLSKey    = "/var/lib/printserver/credentials/portal-key.pem"
+	defaultConfigDir     = "/etc/printserver"
+	defaultStateDir      = "/var/lib/printserver"
+	defaultTLSCert       = "/var/lib/printserver/credentials/portal-cert.pem"
+	defaultTLSKey        = "/var/lib/printserver/credentials/portal-key.pem"
 	initialAdminPassword = "printserver"
 	defaultAdminHash     = "/var/lib/printserver/credentials/portal-admin"
 	defaultHotspotPW     = "/var/lib/printserver/credentials/hotspot-password"
@@ -75,7 +75,7 @@ type app struct {
 	firstRunPath        string
 	deviceID            string
 	dev                 bool
-	netMu sync.Mutex
+	netMu               sync.Mutex
 }
 
 func main() {
@@ -230,9 +230,22 @@ func main() {
 	}
 }
 
+// captivePortalHost devolve o endereço do painel para o cliente da porta 80.
+// As sondas de captive portal chegam com Host de domínios externos porque o
+// dnsmasq do hotspot responde por eles (captive.apple.com, por exemplo).
+// Usar esse Host mostraria o domínio da sonda no celular. O destino real da
+// conexão está em LocalAddr, que é o IP pelo qual o cliente chegou.
+func captivePortalHost(r *http.Request) string {
+	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr); ok &&
+		addr.IP != nil && !addr.IP.IsUnspecified() {
+		return addr.IP.String()
+	}
+	return safeReturnHost(r)
+}
+
 func captivePortalHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		portalURL := "https://" + safeReturnHost(r) + "/"
+		portalURL := "https://" + captivePortalHost(r) + "/"
 		switch r.URL.Path {
 		case "/generate_204",
 			"/gen_204",
@@ -376,7 +389,7 @@ func statusSummary(hasIP, hasPrinter, hasInternet bool) (label, detail, level st
 	case !hasIP:
 		return "Sem rede", "Ligue o cabo ou configure o WiFi.", "err"
 	case !hasPrinter:
-		return "Sem impressora", "Ligue uma impressora USB e use Reconhecer USB em Manutenção.", "warn"
+		return "Sem impressora", "Ligue uma impressora USB e use Reconhecer USB.", "warn"
 	case !hasInternet:
 		return "Pronto", "Sem internet. A impressão local continua funcionando.", "warn"
 	default:

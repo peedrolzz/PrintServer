@@ -10,7 +10,7 @@ func TestStatusSummary(t *testing.T) {
 	}{
 		{"pronto", true, true, true, "Pronto", "", "ok"},
 		{"sem internet", true, true, false, "Pronto", "Sem internet. A impressão local continua funcionando.", "warn"},
-		{"sem impressora", true, false, true, "Sem impressora", "Ligue uma impressora USB e use Reconhecer USB em Manutenção.", "warn"},
+		{"sem impressora", true, false, true, "Sem impressora", "Ligue uma impressora USB e use Reconhecer USB.", "warn"},
 		{"sem rede", false, true, true, "Sem rede", "Ligue o cabo ou configure o WiFi.", "err"},
 		{"sem nada", false, false, false, "Sem rede nem impressora", "Ligue o cabo ou configure o WiFi e conecte uma impressora USB.", "err"},
 	} {

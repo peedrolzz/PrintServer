@@ -1,6 +1,6 @@
 {{define "content"}}
 <h1>Escolha uma senha</h1>
-<p>Troque a senha inicial <span class="mono">printserver</span> antes de usar o painel. Mínimo de 8 caracteres.</p>
+<p>Senha atual <span class="mono">printserver</span>. Mínimo de 8 caracteres.</p>
 {{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
 <form method="post" action="/first-run" autocomplete="off">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
@@ -14,5 +14,4 @@
   </div>
   <button class="btn primary" type="submit">Salvar</button>
 </form>
-<p class="hint">A senha do WiFi do equipamento continua <span class="mono">printserver</span> até você trocar na página de WiFi.</p>
 {{end}}
