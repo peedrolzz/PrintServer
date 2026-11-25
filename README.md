@@ -1,168 +1,162 @@
 # PrintServer
 
-A small service that turns a Raspberry Pi 3 into a shared USB printer
-server for the point-of-sale terminals in a store. It is meant as a
-stop-gap while the customer waits for a proper network printer: cheap,
-local, and with just enough security to survive a shared LAN.
+Serviço pequeno que transforma uma Raspberry Pi 3 em uma impressora USB
+compartilhada na rede local. É uma solução simples e temporária: sem nuvem,
+sem aplicativo, sem portal de fornecedor e sem dependências externas.
 
-PrintServer is MIT licensed and depends on nothing outside the box.
-No cloud account, no mobile app, no vendor portal.
+## O que faz
 
-## What it does
+- Publica as impressoras USB conectadas na Pi nas portas TCP `9100`-`9199`.
+  Por padrão, qualquer máquina da mesma rede pode imprimir, como em uma
+  impressora comum. O modo com token é opcional.
+- Serve um painel HTTPS simples para configuração. A senha inicial é
+  `printserver` e deve ser trocada no primeiro acesso.
+- Sobe um hotspot WiFi chamado `PrintServer-XXXX` para configurar o
+  equipamento pelo celular, sem cabo. O hotspot cai quando a Pi entra na
+  rede escolhida e volta automaticamente se a conexão falhar.
+- Mostra no painel o estado da rede, da USB e da impressão, além de ações
+  de manutenção e teste de impressão.
 
-- Exposes any USB printer plugged into the Pi on TCP ports
-  `9100`-`9199`, reachable from the store LAN. The default is **open**:
-  plain raw 9100, like a generic network printer. The optional
-  **with token** mode requires an HMAC-SHA256 handshake, so only the
-  configured PDV can print.
-- Serves a tiny HTTPS panel for one-time setup. First access is
-  `printserver` / `printserver`; the panel forces a password change
-  before anything else.
-- Boots as a self-contained WiFi hotspot named `PrintServer-XXXX` so
-  the operator can configure it from a phone without any cable. The
-  hotspot drops when the operator joins a real WiFi network, and comes
-  back automatically if that connection fails.
+## O que não é
 
-## What it is not
+- Um sistema centralizado. Cada unidade é independente.
+- Um produto com marca, etiquetas ou adesivos. É um serviço.
+- Um servidor de impressão completo. Não há fila, CUPS nem filtros: o
+  bridge apenas escreve os bytes recebidos em `/dev/usb/lp*`.
 
-- A managed fleet. Every unit is standalone.
-- A product with a logo, labels or stickers. It is a service.
-- A full-featured print server. No queuing, no CUPS, no filters. It is
-  a thin bridge that writes bytes to `/dev/usb/lp*`.
+## Componentes
 
-## Components
-
-| Binary | Role |
+| Binário | Função |
 |---|---|
-| `printserver-portal` | HTTPS panel on 443 (plus a captive HTTP helper on 80). Login, WiFi setup, test print, password change, diagnostics, reboot, bridge mode toggle. |
-| `printserver-bridge` | Raw TCP 9100-9199. By default it writes bytes to `/dev/usb/lp*` like a plain network printer. When the operator turns on token mode, it requires an HMAC-SHA256 handshake first. |
-| `printserver-discover` | One-shot triggered by udev on USB plug. Registers the printer in `printers.json`. |
-| `printserver-helper` | Root-owned Unix socket daemon. Accepts a fixed whitelist of system actions (restart bridge, flip mode, reload USB, reboot). The only process that runs as root. |
-| `printserver-tool` | Small CLI helpers used by the firstboot scripts. |
+| `printserver-portal` | Painel HTTPS na porta 443, com ajudante HTTP na 80 para o portal cativo. Faz login, WiFi, teste de impressão, senhas, diagnóstico e reinício. |
+| `printserver-bridge` | TCP 9100-9199. Por padrão escreve direto em `/dev/usb/lp*`; se o modo com token estiver ativo, exige um handshake HMAC antes de aceitar dados. |
+| `printserver-discover` | Serviço pontual acionado pela udev quando uma impressora USB é conectada. Atualiza `printers.json`. |
+| `printserver-helper` | Serviço root com socket Unix e lista fixa de ações permitidas, como reiniciar serviços e trocar o modo da impressão. |
+| `printserver-tool` | Pequenos comandos usados pelo primeiro boot. |
 
-Everything else runs as the unprivileged `printserver` system user.
+Todos os outros processos rodam como o usuário sem privilégios
+`printserver`.
 
-## How a store uses it
+## Como usar
 
-### 1. First boot
+### 1. Primeiro boot
 
-Flash the SD, insert, power on. On first boot:
+Grave a imagem, ligue a Pi e aguarde o boot. No primeiro boot o equipamento:
 
-- The device picks a random hex ID and sets its hostname to
-  `printserver-XXXX.local` (last 4 characters of the ID, matching the
-  WiFi SSID).
-- Generates a self-signed TLS certificate.
-- Writes the initial credentials (`printserver` for the panel and for
-  the hotspot WiFi).
-- Marks the `first-run` flag so the panel will require a password
-  change at login.
-- Brings up the hotspot `PrintServer-XXXX`.
+- Gera um identificador e define o nome `printserver-XXXX.local`, usando os
+  últimos 4 caracteres do identificador, iguais aos do WiFi.
+- Cria um certificado TLS autoassinado.
+- Define a senha inicial `printserver` para o painel e para o hotspot.
+- Marca o primeiro acesso, obrigando a trocar a senha do painel.
+- Sobe o hotspot `PrintServer-XXXX`.
 
-### 2. Operator configures the device
+### 2. Configuração pelo celular
 
-From a phone or laptop:
+1. Conecte no WiFi `PrintServer-XXXX` com a senha `printserver`.
+2. O portal cativo abre o painel em `https://printserver-XXXX.local`. Se não
+   abrir, digite esse endereço no navegador.
+3. Entre com a senha `printserver` e cadastre uma nova senha de pelo menos
+   8 caracteres.
+4. A senha do hotspot continua `printserver` até você trocá-la na tela de
+   WiFi, se quiser.
+5. Na tela de WiFi, escolha a rede desejada e informe as credenciais. Em
+   redes corporativas 802.1X, o certificado é opcional.
+6. Ao conectar, o hotspot cai. Na mesma rede, abra
+   `https://printserver-XXXX.local` para voltar ao painel.
 
-1. Connect to the WiFi `PrintServer-XXXX` using password
-   `printserver`.
-2. The captive portal opens the panel at
-   `https://printserver-XXXX.local` by itself. If it doesn't, type
-   that URL in the browser.
-3. Log in with password `printserver`.
-4. The panel asks for a new admin password, at least 8 characters.
-   The hotspot WiFi password stays `printserver` until you change it
-   on the WiFi page.
-5. Open the WiFi section, pick the store network, enter credentials.
-   For 802.1X enterprise networks the certificate is optional (opt-in).
-6. The device connects to the chosen WiFi. The hotspot goes down.
-7. From any device on the same WiFi, open
-   `https://printserver-XXXX.local`.
+O endereço `printserver-XXXX.local` funciona tanto no hotspot quanto na rede
+final. O IP do hotspot existe apenas durante a configuração.
 
-### 3. Point-of-sale talks to the printer
+### 3. Impressão na rede
 
-The PDV sends ESC/POS bytes to `9100-9199` on the Pi's address. By
-default it just opens the socket and writes, so any machine on the
-same WiFi can print. If the operator turns on **token mode**, the PDV
-must send a 60-byte handshake first (magic `CPJ1` + nonce + timestamp
-+ HMAC-SHA256(token, msg)). The token is in
-`/var/lib/printserver/credentials/bridge-token`.
+O sistema que imprime envia bytes ESC/POS para as portas `9100`-`9199` no
+endereço da Pi. No modo padrão, basta abrir a conexão e escrever.
 
-### 4. Recovery
+Se o operador ativar o modo com token no painel, o cliente precisa enviar
+antes um handshake de 60 bytes: magic `CPJ1`, nonce, timestamp e
+HMAC-SHA256 com o segredo compartilhado. O segredo fica em
+`/var/lib/printserver/credentials/bridge-token` e não é exibido no painel.
 
-Three fallback paths if the operator loses access:
+### 4. Recuperação
 
-- The watchdog runs every 30 seconds. If the device is in client mode
-  and `wlan0` has had no valid IP for two minutes, it goes back to
-  hotspot by itself.
-- Put the SD in a computer, create an empty file called
-  `reset-hotspot` in the boot partition, put it back in the Pi. On
-  the next boot the device returns to hotspot with the default WiFi
-  password.
-- SSH via Ethernet is always available for support; the keys live in
-  `/home/printer/.ssh/authorized_keys` and stay out of the hotspot
-  interface (nftables drops port 22 on `wlan0`).
+Se o acesso for perdido:
 
-## Installing
+- O watchdog roda a cada 30 segundos. Se a Pi estiver como cliente do WiFi e
+  não tiver IP válido por dois minutos, volta para o hotspot.
+- Coloque o SD no computador, crie um arquivo vazio chamado `reset-hotspot`
+  na partição de boot e devolva o cartão à Pi. No próximo boot o
+  equipamento volta ao hotspot com a senha padrão de WiFi.
+- O acesso de suporte é por SSH na ethernet, nunca pelo hotspot. A imagem
+  é selada sem chaves de acesso e sem login por senha: para entrar, adicione
+  sua chave pública em `/home/printer/.ssh/authorized_keys`. As chaves do
+  servidor SSH são geradas de novo no primeiro boot.
 
-Prebuilt `.deb` for Raspberry Pi OS Lite 64-bit:
+## Instalação
+
+Pacote `.deb` pronto para Raspberry Pi OS Lite 64 bits:
 
 ```
-sudo apt install ./printserver_<version>_arm64.deb
+sudo apt install ./printserver_<versao>_arm64.deb
 sudo reboot
 ```
 
-The postinst creates the `printserver` system user, enables the
-systemd units, and makes sure the distro `hostapd` and `dnsmasq` do
-not race with the units shipped here. First boot does the rest.
+O pacote cria o usuário do serviço, habilita os units do systemd e evita
+que os serviços de distro para `hostapd` e `dnsmasq` disputem com os deste
+projeto. O primeiro boot completa a configuração.
 
-## Building
+## Compilação
 
-Requirements: Go 1.22 or newer, `dpkg-deb`.
+Requisitos: Go 1.26 ou newer e `dpkg-deb`.
 
 ```
-make all        # arm64 binaries in dist/bin/arm64
-make deb        # Debian package in dist/pkg
+make all        # binários arm64 em dist/bin/arm64
+make deb        # pacote Debian em dist/pkg
 make test       # go test ./...
-make ci-scan    # grep-based audit against the tree
+make ci-scan    # auditoria simples por busca no código
 ```
 
-## Security posture
+## Segurança
 
-Just the basics that matter when the Pi sits on a customer LAN:
+Controles implementados:
 
-- Per-device admin password; forced change on first login.
-- Argon2id for the admin password hash.
-- CSRF double-submit on every form.
-- Login rate limit (10 wrong passwords per minute per source IP).
-- HSTS, CSP, X-Frame-Options, X-Content-Type-Options,
-  Referrer-Policy, Permissions-Policy on every response. No `Server`
-  header.
-- Session cookie HttpOnly, Secure, SameSite=Strict.
-- Captive DNS only resolves `printserver.local` and the captive-portal
-  probes for every major OS. Anything else returns REFUSED.
-- `nftables` drops TCP/22 on the hotspot interface. SSH is Ethernet
-  only.
-- Bridge starts in open mode and accepts raw bytes, like any generic
-  network printer. Token mode is opt-in and refuses connections
-  without a valid HMAC handshake.
-- Every systemd unit is hardened (`ProtectSystem=strict`,
-  `NoNewPrivileges`, minimal capability set). Only the helper runs as
-  root and it only runs commands from a hard-coded list.
-- First boot regenerates the SSH host keys and shreds the cloud-init
-  `user-data` left in the boot partition by `rpi-imager`.
-- `scripts/audit.sh` reruns the list on a live device.
+- Senha por equipamento, com troca obrigatória no primeiro acesso.
+- Hash Argon2id da senha administrativa.
+- CSRF double-submit em todos os formulários.
+- Limite de 10 senhas erradas por minuto por IP no login, e limites nas
+  ações e no bridge.
+- HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
+  Permissions-Policy e sem cabeçalho `Server`.
+- Cookie de sessão `HttpOnly`, `Secure`, `SameSite=Strict`.
+- DNS do hotspot responde apenas por `printserver.local`,
+  `printserver-XXXX.local`, `printserver` e pelas sondas de portal cativo.
+  Qualquer outro nome recebe REFUSED.
+- SSH bloqueado na interface do hotspot e limitado à ethernet.
+- Impressão aberta por padrão. O modo com token é opt-in e rejeita
+  conexões sem o handshake HMAC correto.
+- Serviços persistentes rodando como `printserver`, com
+  `ProtectSystem=strict`, `NoNewPrivileges` e capacidades mínimas. O
+  primeiro boot roda como root e não recebe esse endurecimento.
+- O helper root usa lista fixa de comandos, sem shell e com socket restrito
+  ao grupo `printserver`.
+- No primeiro boot as chaves SSH da imagem são descartadas e geradas de novo;
+  o `user-data` do cloud-init deixado pelo `rpi-imager` é apagado.
+- `scripts/audit.sh` repete essas checagens no equipamento em operação.
 
-## Layout
+A impressão aberta é uma escolha consciente: qualquer dispositivo que
+alcance a Pi na rede pode imprimir. Se isso não for desejado, ative o modo
+com token no painel.
+
+## Estrutura
 
 ```
-cmd/              binaries (portal, bridge, discover, helper, tool)
-pkg/              reusable packages
-scripts/          firstboot, seal-image, apply-network-config, audit,
-                  wifi-scan, wifi-profile, watchdog, recovery
-systemd/          service units and timers
-config/           default nftables.conf
-udev/             USB printer rules
+cmd/              binários (portal, bridge, discover, helper, tool)
+pkg/              código reutilizável
+scripts/          primeiro boot, rede, WiFi, watchdog, recuperação, auditoria
+systemd/          serviços e timers
+config/           regras padrão de nftables
+udev/             regras para impressoras USB
 ```
 
-## License
+## Licença
 
-MIT. See `LICENSE`.
+MIT. Veja `LICENSE`.
