@@ -3,6 +3,7 @@
 <p>Troque a senha inicial <span class="mono">printserver</span> do painel e do WiFi. Mínimo de 8 caracteres.</p>
 {{if .Error}}<div class="msg err">{{.Error}}</div>{{end}}
 <form method="post" action="/first-run" autocomplete="off">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
   <h2>Painel</h2>
   <div class="field">
     <label for="new">Nova senha do painel</label>

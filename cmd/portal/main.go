@@ -422,6 +422,16 @@ func (a *app) render(w http.ResponseWriter, page string, d pageData) {
 	}
 }
 
+func (a *app) csrfFail(w http.ResponseWriter, r *http.Request, back string) {
+	a.log.Warn("portal: csrf fail", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
+	w.WriteHeader(http.StatusForbidden)
+	a.render(w, "error", pageData{
+		Title:   "Sessão expirada",
+		Message: "A página ficou aberta tempo demais ou o navegador bloqueou o cookie de segurança. Aperte o botão abaixo para recarregar e tentar de novo.",
+		Error:   back,
+	})
+}
+
 func (a *app) getLogin(w http.ResponseWriter, r *http.Request) {
 	csrf, err := auth.IssueCSRF(w, r)
 	if err != nil {
@@ -433,7 +443,7 @@ func (a *app) getLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.loginLimit.Allow(auth.HTTPKey(r)) {
@@ -470,7 +480,7 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postLogout(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	a.sess.Clear(w)
@@ -515,7 +525,7 @@ func (a *app) getWifi(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postWifiScan(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -545,7 +555,7 @@ func (a *app) postWifiScan(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postWifiHotspot(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -612,7 +622,7 @@ func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -659,7 +669,7 @@ func (a *app) wifiError(w http.ResponseWriter, r *http.Request, msg string) {
 
 func (a *app) postWifiConnect(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -754,7 +764,7 @@ func (a *app) getTestPrint(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postTestPrint(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -879,7 +889,7 @@ func (a *app) saveHotspotPage(w http.ResponseWriter, r *http.Request, msg string
 
 func (a *app) postWifiPassword(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -921,7 +931,7 @@ func (a *app) postWifiPassword(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postPassword(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	cur := validate.Password(r.FormValue("current"))
@@ -976,7 +986,7 @@ func (a *app) getFirstRun(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) postFirstRun(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	n1 := validate.Password(r.FormValue("new"))
@@ -1104,7 +1114,7 @@ func (a *app) postReboot(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) helperCall(w http.ResponseWriter, r *http.Request, action string) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
@@ -1405,7 +1415,7 @@ func safeFilename(s string) string {
 
 func (a *app) postUploadCA(w http.ResponseWriter, r *http.Request) {
 	if err := auth.VerifyCSRF(r); err != nil {
-		http.Error(w, "csrf", http.StatusForbidden)
+		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxCAUpload)
