@@ -546,6 +546,7 @@ func (a *app) getWifi(w http.ResponseWriter, r *http.Request) {
 		ScannedAt:     wifiScannedAt(),
 		Mode:          readMode(),
 		Hostname:      readHostname(),
+		ReturnHost:    panelHost(),
 	})
 }
 

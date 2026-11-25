@@ -57,6 +57,10 @@ Antes da queda do hotspot, mostrar sempre `printserver-<id>.local`, nunca
 rede. Vale para o portal cativo e para as telas `wifi_connecting`,
 `wifi_scanning` e `password_wifi_saved`.
 
+Texto da troca: `Após a conexão WiFi, o hotspot cai do ar. Conecte o celular
+na mesma WiFi e acesse https://printserver-<id>.local.` Na tela de WiFi, a dica
+antes do botão Conectar usa a mesma orientação, sem explicação longa.
+
 A dica `Senha inicial: printserver` aparece no login somente enquanto o
 primeiro acesso não foi concluído. Depois da troca de senha, some.
 
