@@ -58,7 +58,7 @@ const (
 	writeTimeout         = 15 * time.Second
 	idleTimeout          = 30 * time.Second
 	sessionTTL           = 2 * time.Hour
-	maxLoginPerMinute    = 3
+	maxLoginPerMinute    = 10
 	maxConnsConcurr      = 25
 )
 
@@ -446,7 +446,7 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
-	if !a.loginLimit.Allow(auth.HTTPKey(r)) {
+	if a.loginLimit.Blocked(auth.HTTPKey(r)) {
 		csrf, _ := auth.IssueCSRF(w, r)
 		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Muitas tentativas. Aguarde 1 minuto."})
 		return
@@ -465,6 +465,7 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, _ := crypto.VerifyPassword(pw, strings.TrimSpace(string(phc)))
 	if !ok {
+		a.loginLimit.Record(auth.HTTPKey(r))
 		a.log.Warn("portal: login failed", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
 		csrf, _ := auth.IssueCSRF(w, r)
 		a.render(w, "login", pageData{Title: "Entrar", CSRF: csrf, Error: "Senha incorreta."})
@@ -991,8 +992,6 @@ func (a *app) postFirstRun(w http.ResponseWriter, r *http.Request) {
 	}
 	n1 := validate.Password(r.FormValue("new"))
 	n2 := validate.Password(r.FormValue("confirm"))
-	w1 := validate.Password(r.FormValue("wifi"))
-	w2 := validate.Password(r.FormValue("wifi_confirm"))
 	csrf, _ := auth.IssueCSRF(w, r)
 	render := func(err string) {
 		a.render(w, "first_run", pageData{
@@ -1009,23 +1008,6 @@ func (a *app) postFirstRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if n1 == initialAdminPassword {
 		render("A nova senha não pode ser \"" + initialAdminPassword + "\". Escolha outra.")
-		return
-	}
-	if len(w1) < 8 {
-		render("Escolha também a senha do WiFi, com no mínimo 8 caracteres.")
-		return
-	}
-	if w1 != w2 {
-		render("As duas senhas do WiFi não conferem.")
-		return
-	}
-	if w1 == initialAdminPassword {
-		render("A senha do WiFi não pode ser \"" + initialAdminPassword + "\". Escolha outra.")
-		return
-	}
-	if err := a.writeHotspotPassword(w1); err != nil {
-		a.log.Error("portal: first-run hotspot password failed", "err", err)
-		render("Não foi possível salvar a senha do WiFi. Tente novamente.")
 		return
 	}
 	newPhc, err := crypto.HashPassword(n1)
@@ -1045,9 +1027,9 @@ func (a *app) postFirstRun(w http.ResponseWriter, r *http.Request) {
 	if err := os.Remove(a.firstRunPath); err != nil && !os.IsNotExist(err) {
 		a.log.Warn("portal: cannot remove first-run flag", "err", err)
 	}
-	a.log.Info("portal: first-run passwords set", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
+	a.log.Info("portal: first-run password set", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
 	_ = a.sess.Issue(w)
-	a.saveHotspotPage(w, r, "Senhas salvas")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (a *app) getDiag(w http.ResponseWriter, r *http.Request) {
