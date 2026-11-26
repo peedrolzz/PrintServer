@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -54,6 +55,16 @@ func TestHTTPKeyIPv6(t *testing.T) {
 	req.RemoteAddr = "192.0.2.10:1234"
 	if got := HTTPKey(req); got != "192.0.2.10" {
 		t.Fatalf("HTTPKey = %q, want 192.0.2.10", got)
+	}
+}
+
+func TestPeerKeyIgnoraPortaNoIPv6(t *testing.T) {
+	addr, err := net.ResolveTCPAddr("tcp", "[::1]:54321")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := PeerKey(addr); got != "::1" {
+		t.Fatalf("PeerKey = %q, want ::1", got)
 	}
 }
 

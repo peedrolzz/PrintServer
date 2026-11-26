@@ -21,6 +21,7 @@
   <div>
     <strong>Com token</strong>
     <p>Só quem tiver o token imprime.</p>
+    <p class="hint">Ative só se o sistema que imprime souber enviar o token.</p>
   </div>
   {{if .BridgeOpen}}
   <form method="post" action="/bridge" onsubmit="return confirm('Ativar impressão só para quem tiver o token?')">

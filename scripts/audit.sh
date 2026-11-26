@@ -5,11 +5,17 @@ warn() { printf '  \033[33mAVISO\033[0m %s\n' "$*"; WARNED=$((WARNED+1)); }
 section() { printf '\n[%s]\n' "$*"; }
 PASSED=0; FAILED=0; WARNED=0
 
-section "V01 PrintBridge sem auth"
+section "V01 Portas de impressão"
+# Impressão aberta é o padrão: o sistema que imprime precisa alcançar a
+# porta 9100. O problema seria abrir portas sem impressora configurada.
 if sudo ss -tln 2>/dev/null | grep -qE "0\.0\.0\.0:91[0-9][0-9]"; then
-    fail "porta 9100-9199 aberta em 0.0.0.0"
+    if sudo grep -q '"enabled"[[:space:]]*:[[:space:]]*true' /etc/printserver/printers.json 2>/dev/null; then
+        pass "portas 9100-9199 abertas para impressoras configuradas"
+    else
+        fail "portas 9100-9199 abertas sem impressora ativa"
+    fi
 else
-    pass "nenhuma porta de impressora exposta sem impressora configurada"
+    warn "nenhuma porta de impressora ativa"
 fi
 
 section "V02 Senha em claro no SD"

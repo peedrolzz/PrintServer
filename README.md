@@ -29,7 +29,7 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 | Binário | Função |
 |---|---|
 | `printserver-portal` | Painel HTTPS na porta 443, com ajudante HTTP na 80 para o portal cativo. Faz login, WiFi, teste de impressão, senhas, diagnóstico e reinício. |
-| `printserver-bridge` | TCP 9100-9199. Por padrão escreve direto em `/dev/usb/lp*`; se o modo com token estiver ativo, exige um handshake HMAC antes de aceitar dados. |
+| `printserver-bridge` | TCP 9100-9199. Por padrão escreve direto em `/dev/printserver/by-serial/<serial>`; se o modo com token estiver ativo, exige um handshake HMAC antes de aceitar dados. |
 | `printserver-discover` | Serviço pontual acionado pela udev quando uma impressora USB é conectada. Atualiza `printers.json`. |
 | `printserver-helper` | Serviço root com socket Unix e lista fixa de ações permitidas, como reiniciar serviços e trocar o modo da impressão. |
 | `printserver-tool` | Pequenos comandos usados pelo primeiro boot. |
@@ -69,16 +69,25 @@ final. O IP do hotspot existe apenas durante a configuração.
 
 ### 3. Impressão na rede
 
-O sistema que imprime envia bytes ESC/POS para as portas `9100`-`9199` no
-endereço da Pi. No modo padrão, basta abrir a conexão e escrever.
+Configure no sistema que imprime o endereço `printserver-XXXX.local` e a porta
+`9100` (ou a porta mostrada no painel). No modo padrão, basta abrir a conexão
+e escrever os bytes do trabalho: o bridge repassa tudo para a impressora USB.
+Texto e comandos PCL funcionam na RICOH; comandos ESC/POS dependem da
+impressora conectada.
+
+Qualquer máquina da rede pode imprimir no modo padrão. Cada endereço pode
+enviar até 60 trabalhos por minuto; para ajustar, defina
+`PRINTBRIDGE_MAX_PER_MIN` no ambiente do serviço `printserver-bridge`.
 
 Se o operador ativar o modo com token no painel, o cliente precisa enviar
 antes um handshake de 60 bytes: magic `CPJ1`, nonce, timestamp e
-HMAC-SHA256 com o segredo compartilhado. O segredo é gerado pela própria Pi
-no primeiro boot, fica em `/var/lib/printserver/credentials/bridge-token` e
-pode ser copiado no painel, na tela de Impressão. Ele não é enviado
-automaticamente: alguém precisa repassar esse valor a quem configura o
-sistema que imprime. Cada equipamento tem o seu próprio segredo.
+HMAC-SHA256 com o segredo compartilhado. Só ative esse modo se o sistema que
+imprime souber enviar esse handshake; se não souber, os trabalhos param.
+O segredo é gerado pela própria Pi no primeiro boot, fica em
+`/var/lib/printserver/credentials/bridge-token` e pode ser copiado no painel,
+na tela de Impressão. Ele não é enviado automaticamente: alguém precisa
+repassar esse valor a quem configura o sistema que imprime. Cada equipamento
+tem o seu próprio segredo.
 
 ### 4. Recuperação
 

@@ -31,8 +31,11 @@ const (
 	maxJob              = 512 * 1024
 	jobTimeout          = 30 * time.Second
 	handshakeTimeout    = 5 * time.Second
-	maxPerIPPerMin      = 10
-	maxAckDetail        = 160
+	// Um sistema de impressão pode enviar vários cupons em sequência. Dez por
+	// minuto derrubaria trabalhos reais, então o padrão é um por segundo.
+	maxPerIPPerMin    = 60
+	maxPerIPPerMinCap = 600
+	maxAckDetail      = 160
 )
 
 // bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
@@ -95,7 +98,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	rl := auth.NewLimiter(time.Minute, maxPerIPPerMin)
+	rl := auth.NewLimiter(time.Minute, maxPerIPPerMinFromEnv())
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -166,10 +169,7 @@ func serve(log *slog.Logger, ln net.Listener, dev *printer.Device, p config.Prin
 
 func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
 	defer conn.Close()
-	host, _ := auth.SplitFirst(conn.RemoteAddr().String(), ":")
-	if host == "" {
-		host = conn.RemoteAddr().String()
-	}
+	host := auth.PeerKey(conn.RemoteAddr())
 	if !rl.Allow(host) {
 		log.Warn("bridge: rate limit", logger.ClientCIDR(conn.RemoteAddr()))
 		return
@@ -252,6 +252,20 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// maxPerIPPerMinFromEnv permite ajustar o limite sem mudar o código. Um valor
+// inválido volta ao padrão; um valor muito alto é limitado para não transformar
+// a porta de impressão em um canal livre de abuso.
+func maxPerIPPerMinFromEnv() int {
+	n, err := strconv.Atoi(envOr("PRINTBRIDGE_MAX_PER_MIN", ""))
+	if err != nil || n <= 0 {
+		return maxPerIPPerMin
+	}
+	if n > maxPerIPPerMinCap {
+		return maxPerIPPerMinCap
+	}
+	return n
 }
 
 func trimEOL(b []byte) []byte {

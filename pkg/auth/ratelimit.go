@@ -69,10 +69,20 @@ func (l *Limiter) Record(key string) {
 	l.hits[key] = kept
 }
 
-func HTTPKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+func hostKey(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return r.RemoteAddr
+		return addr
 	}
 	return host
+}
+
+// PeerKey devolve só o IP do cliente. Com IPv6, dividir no primeiro ":" também
+// separaria o IP da porta e cada conexão ganharia uma chave diferente.
+func PeerKey(addr net.Addr) string {
+	return hostKey(addr.String())
+}
+
+func HTTPKey(r *http.Request) string {
+	return hostKey(r.RemoteAddr)
 }
