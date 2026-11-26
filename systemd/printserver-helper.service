@@ -1,7 +1,8 @@
 [Unit]
 Description=PrintServer privileged action helper
 After=local-fs.target
-Before=printserver-agent.service printserver-portal.service
+Before=printserver-portal.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -31,8 +32,8 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallFilter=@system-service @reboot
 UMask=0077
-LimitNOFILE=64
-TasksMax=16
+LimitNOFILE=128
+TasksMax=32
 MemoryMax=32M
 
 [Install]

@@ -18,7 +18,21 @@ MSG
 fi
 
 echo "[seal] stopping services"
-systemctl stop printserver-agent.service printserver-bridge.service printserver-portal.service printserver-discover.service 2>/dev/null || true
+for u in \
+    printserver-network.service \
+    printserver-hostname.service \
+    printserver-recovery.service \
+    printserver-hotspot.service \
+    printserver-hotspot-dns.service \
+    printserver-issue.service \
+    printserver-watchdog.timer \
+    printserver-portal.service \
+    printserver-bridge.service \
+    printserver-discover.service \
+    printserver-helper.service
+do
+    systemctl stop "$u" 2>/dev/null || true
+done
 
 echo "[seal] wiping per-device state"
 rm -rf /var/lib/printserver/credentials/*
@@ -28,7 +42,10 @@ rm -f  /var/lib/printserver/state.json
 rm -f  /etc/printserver/device.json
 rm -f  /etc/printserver/manager.json
 rm -f  /etc/printserver/printers.json
-echo "{\"printers\":[]}" > /etc/printserver/printers.json
+rm -f  /etc/printserver/hostapd.conf
+rm -f  /etc/printserver/wifi-ssid
+rm -f  /etc/issue
+printf '{\n  "printers": [],\n  "config_revision": 0\n}\n' > /etc/printserver/printers.json
 chmod 0644 /etc/printserver/printers.json
 
 echo "[seal] removing NM profiles"
@@ -50,8 +67,8 @@ find /home /root -name '.lesshst' -type f -delete 2>/dev/null || true
 find /home /root -name '.viminfo' -type f -delete 2>/dev/null || true
 
 echo "[seal] removing backups (V11/V13)"
-find /opt -name '*.backup*' -o -name '*.bak' -o -name '*.old' -type f -delete 2>/dev/null || true
-find /etc -name '*.backup*' -o -name '*.bak' -o -name '*.old' -type f -delete 2>/dev/null || true
+find /opt -type f \( -name '*.backup*' -o -name '*.bak' -o -name '*.old' \) -delete 2>/dev/null || true
+find /etc -type f \( -name '*.backup*' -o -name '*.bak' -o -name '*.old' \) -delete 2>/dev/null || true
 
 echo "[seal] removing non-product sudoers drop-ins (V23)"
 for f in /etc/sudoers.d/*; do

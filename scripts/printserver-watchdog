@@ -35,6 +35,8 @@ echo "$CUR" > "$FAIL_FILE"
 
 if (( CUR >= CLIENT_FAIL_LIMIT )); then
     logger -t printserver-watchdog "WiFi client has no IP after $CUR checks; reverting to hotspot"
-    /usr/local/sbin/printserver-set-mode hotspot
+    # Zerar antes: se o set-mode falhar, o timer não fica抯 preso tentando
+    # a cada 30 segundos com a rede ainda instável.
     echo 0 > "$FAIL_FILE"
+    /usr/local/sbin/printserver-set-mode hotspot
 fi

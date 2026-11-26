@@ -20,6 +20,11 @@ log() {
 
 [[ -f "$FLAG" ]] || { log "no firstboot.flag, nothing to do"; exit 0; }
 
+# Credenciais nunca vão para o log. Começar limpo também evita carregar o
+# histórico de outra imagem para o equipamento atual.
+: > "$LOG"
+chmod 0600 "$LOG"
+
 log "starting"
 
 install -d -o root -g root -m 0755 "$CONFIG_DIR"
@@ -35,7 +40,10 @@ for candidate in /boot/firmware/printserver-preseed.json /boot/printserver-prese
     fi
 done
 
-if [[ -n "$PRESEED" ]]; then
+if [[ -f "$CONFIG_DIR/device.json" ]]; then
+    DEVICE_ID="$("$TOOL" device-id "$CONFIG_DIR/device.json")"
+    log "device identity preserved"
+elif [[ -n "$PRESEED" ]]; then
     python3 -c "import json,sys;d=json.load(open(sys.argv[1]))['device'];open(sys.argv[2],'w').write(json.dumps(d,indent=2))" \
         "$PRESEED" "$CONFIG_DIR/device.json"
     chmod 0644 "$CONFIG_DIR/device.json"
@@ -51,29 +59,60 @@ SUFFIX="${SUFFIX,,}"
 NEW_HOSTNAME="printserver-${SUFFIX}"
 printf '%s\n' "$NEW_HOSTNAME" > /etc/hostname
 hostname "$NEW_HOSTNAME"
-if grep -qE '^127\.0\.1\.1' /etc/hosts; then
-    sed -i -E "s/^127\.0\.1\.1\s+.*/127.0.1.1\t${NEW_HOSTNAME}/" /etc/hosts
-else
-    printf '127.0.1.1\t%s\n' "$NEW_HOSTNAME" >> /etc/hosts
+# Substituir só a linha do nosso hostname; não descartar aliases que
+# outras ferramentas tenham acrescentado depois da primeira execução.
+HOSTS_TMP=/etc/hosts.printserver.tmp.$$
+awk -v h="$NEW_HOSTNAME" '
+    $1 == "127.0.1.1" && NF > 1 && ($2 == h || $2 ~ /^printserver-/) {
+        print "127.0.1.1\t" h
+        next
+    }
+    { print }
+' /etc/hosts > "$HOSTS_TMP"
+if ! grep -qF "127.0.1.1	${NEW_HOSTNAME}" "$HOSTS_TMP"; then
+    printf '127.0.1.1\t%s\n' "$NEW_HOSTNAME" >> "$HOSTS_TMP"
 fi
+cat "$HOSTS_TMP" > /etc/hosts
+rm -f "$HOSTS_TMP"
 log "hostname set to $NEW_HOSTNAME"
 
-# Impressão aberta é o padrão. O modo com token só é ativado pelo painel.
-rm -f "$CONFIG_DIR/bridge-token-mode" "$CONFIG_DIR/bridge-open"
+# Só a primeira instalação volta ao padrão. Se o cartão já tem estado,
+# preservar a escolha do operador, inclusive o modo de impressão.
+HAD_STATE=0
+[[ -s "$CRED_DIR/portal-admin" ]] && HAD_STATE=1
 
-# Só cria o que ainda não existe. Uma segunda execução não pode trocar
-# a senha escolhida, o token nem o certificado já aceito pelo navegador.
-if [[ -s "$CRED_DIR/portal-admin" ]]; then
+if [[ "$HAD_STATE" -eq 0 ]]; then
+    rm -f "$CONFIG_DIR/bridge-token-mode" "$CONFIG_DIR/bridge-open"
+fi
+
+# Gravar segredos em arquivo temporário e renomear: uma queda de energia
+# não deixa um arquivo meio escrito com o dono errado.
+write_secret() {
+    local dest="$1"
+    local tmp="${dest}.tmp.$$"
+    cat > "$tmp"
+    chown "$PRINT_USER":"$PRINT_GROUP" "$tmp"
+    chmod 0600 "$tmp"
+    mv -f "$tmp" "$dest"
+}
+
+# Um hash Argon2 truncado não serve. Tratar como ausente para não travar
+# o painel com uma senha que nunca mais pode ser verificada.
+ADMIN_OK=0
+if [[ -s "$CRED_DIR/portal-admin" ]] && grep -q '^\$argon2id\$v=' "$CRED_DIR/portal-admin"; then
+    ADMIN_OK=1
+fi
+
+if [[ "$ADMIN_OK" -eq 1 ]]; then
     chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-admin"
     chmod 0600 "$CRED_DIR/portal-admin"
     log "admin password preserved"
 else
     HASH="$(printf '%s\n' 'printserver' | "$TOOL" hash-password)"
-    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/portal-admin"
-    printf '%s\n' "$HASH" > "$CRED_DIR/portal-admin"
+    printf '%s\n' "$HASH" | write_secret "$CRED_DIR/portal-admin"
     install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/first-run.flag"
+    log "admin password set to initial value"
     log "first-run flag set"
-    log "panel login: printserver (change on first access)"
 fi
 
 if [[ -s "$CRED_DIR/hotspot-password" ]]; then
@@ -81,9 +120,8 @@ if [[ -s "$CRED_DIR/hotspot-password" ]]; then
     chmod 0600 "$CRED_DIR/hotspot-password"
     log "hotspot password preserved"
 else
-    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/hotspot-password"
-    printf '%s\n' 'printserver' > "$CRED_DIR/hotspot-password"
-    log "hotspot password: printserver"
+    printf '%s\n' 'printserver' | write_secret "$CRED_DIR/hotspot-password"
+    log "hotspot password set"
 fi
 
 if [[ -s "$CRED_DIR/bridge-token" ]]; then
@@ -91,8 +129,7 @@ if [[ -s "$CRED_DIR/bridge-token" ]]; then
     chmod 0600 "$CRED_DIR/bridge-token"
     log "bridge token preserved"
 else
-    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/bridge-token"
-    openssl rand -hex 32 > "$CRED_DIR/bridge-token"
+    openssl rand -hex 32 | write_secret "$CRED_DIR/bridge-token"
     log "bridge token created"
 fi
 
@@ -107,21 +144,29 @@ else
     if [[ -n "$PRIMARY_IP" ]]; then
         SAN="${SAN},IP:${PRIMARY_IP}"
     fi
+    CERT_TMP="$CRED_DIR/portal-cert.pem.tmp.$$"
+    KEY_TMP="$CRED_DIR/portal-key.pem.tmp.$$"
     openssl req -x509 -newkey rsa:2048 -nodes \
-        -out "$CRED_DIR/portal-cert.pem" \
-        -keyout "$CRED_DIR/portal-key.pem" \
+        -out "$CERT_TMP" \
+        -keyout "$KEY_TMP" \
         -subj "/CN=$NEW_HOSTNAME.local" \
         -addext "$SAN" \
         -days 3650 >/dev/null 2>&1
-    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-cert.pem" "$CRED_DIR/portal-key.pem"
-    chmod 0600 "$CRED_DIR/portal-key.pem"
-    chmod 0644 "$CRED_DIR/portal-cert.pem"
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CERT_TMP" "$KEY_TMP"
+    chmod 0600 "$KEY_TMP"
+    chmod 0644 "$CERT_TMP"
+    mv -f "$CERT_TMP" "$CRED_DIR/portal-cert.pem"
+    mv -f "$KEY_TMP" "$CRED_DIR/portal-key.pem"
 fi
 PORTAL_FP="$("$TOOL" fingerprint-sha256 "$CRED_DIR/portal-cert.pem")"
 
-rm -f /etc/ssh/ssh_host_*
-if command -v ssh-keygen >/dev/null; then
-    ssh-keygen -A
+# Só a primeira instalação troca as chaves do host. Uma reexecução do
+# firstboot não pode invalidar a confiança de quem já acessou por SSH.
+if [[ "$HAD_STATE" -eq 0 ]]; then
+    rm -f /etc/ssh/ssh_host_*
+    if command -v ssh-keygen >/dev/null; then
+        ssh-keygen -A
+    fi
 fi
 
 install -d -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0750 "$CRED_DIR/enterprise-ca"

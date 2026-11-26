@@ -1,6 +1,8 @@
 [Unit]
 Description=PrintServer USB Discovery (one-shot)
-After=local-fs.target
+After=local-fs.target printserver-helper.service
+Wants=printserver-helper.service
+Before=printserver-bridge.service
 
 [Service]
 Type=oneshot

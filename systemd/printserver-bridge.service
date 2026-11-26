@@ -2,6 +2,7 @@
 Description=PrintServer Bridge (TCP -> USB)
 After=network-online.target printserver-firstboot.service
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -16,10 +17,8 @@ RestartSec=3
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=no
-DeviceAllow=/dev/usb/lp0 rw
-DeviceAllow=/dev/usb/lp1 rw
-DeviceAllow=/dev/usb/lp2 rw
-DeviceAllow=/dev/usb/lp3 rw
+# Glob por path não é suportado; liberar o major do usblp cobre lp0..lp99.
+DeviceAllow=char-180:* rw
 DevicePolicy=closed
 ProtectSystem=strict
 ReadWritePaths=/var/lib/printserver /run/printserver

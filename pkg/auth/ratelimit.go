@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -29,8 +30,10 @@ func (l *Limiter) Allow(key string) bool {
 			kept = append(kept, t)
 		}
 	}
+	if len(kept) == 0 {
+		delete(l.hits, key)
+	}
 	if len(kept) >= l.max {
-		l.hits[key] = kept
 		return false
 	}
 	kept = append(kept, now)
@@ -67,9 +70,9 @@ func (l *Limiter) Record(key string) {
 }
 
 func HTTPKey(r *http.Request) string {
-	host, _ := SplitFirst(r.RemoteAddr, ":")
-	if host == "" {
-		host = r.RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return host
 }

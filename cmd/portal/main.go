@@ -126,7 +126,7 @@ func main() {
 		caStore:             *caStore,
 		configDir:           *configDir,
 		bridgeTokPath:       *bridgeTok,
-		firstRunPath:        defaultFirstRun,
+		firstRunPath:        filepath.Join(*stateDir, "credentials", "first-run.flag"),
 		deviceID:            id.DeviceID,
 		dev:                 *devMode,
 	}
@@ -519,6 +519,7 @@ func (a *app) postLogout(w http.ResponseWriter, r *http.Request) {
 		a.csrfFail(w, r, r.URL.Path)
 		return
 	}
+	_ = a.sess.RotateKey()
 	a.sess.Clear(w)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -1030,6 +1031,7 @@ func (a *app) postPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.log.Info("portal: password changed", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
+	_ = a.sess.RotateKey()
 	a.sess.Clear(w)
 	http.Redirect(w, r, "/login?pwchanged=1", http.StatusSeeOther)
 }
@@ -1086,6 +1088,8 @@ func (a *app) postFirstRun(w http.ResponseWriter, r *http.Request) {
 		a.log.Warn("portal: cannot remove first-run flag", "err", err)
 	}
 	a.log.Info("portal: first-run password set", logger.ClientCIDR(mustAddr(r.RemoteAddr)))
+	// A senha inicial era conhecida: invalidar qualquer sessão aberta com ela.
+	_ = a.sess.RotateKey()
 	_ = a.sess.Issue(w)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -1109,10 +1113,12 @@ func (a *app) runDiag() []diagCheck {
 	} else {
 		out = append(out, diagCheck{"Internet", "sem acesso externo (pode ser rede isolada)", "warn"})
 	}
-	if _, err := helperclient.Send("", "reload-bridge-config"); err == nil {
+	// Consultar o estado não pode derrubar as portas 9100+: um SIGHUP aqui
+	// reiniciava os listeners enquanto o operador só queria diagnosticar.
+	if _, err := helperclient.Send("", "bridge-status"); err == nil {
 		out = append(out, diagCheck{"Serviço de impressão", "respondendo", "ok"})
 	} else {
-		out = append(out, diagCheck{"Serviço de impressão", err.Error(), "err"})
+		out = append(out, diagCheck{"Serviço de impressão", "sem resposta", "err"})
 	}
 	if cfg, err := config.LoadPrinters(filepath.Join(a.configDir, "printers.json")); err == nil && len(cfg.Printers) > 0 {
 		count := 0

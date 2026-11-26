@@ -24,8 +24,11 @@ section "V03 Senha hotspot hardcoded"
 if sudo grep -rq "HARDCODED_PASSWORD_XYZ" /etc/printserver/ 2>/dev/null; then
     fail "senha hardcoded encontrada"
 else
-    HP=$(sudo cat /var/lib/printserver/credentials/hotspot-password 2>/dev/null)
-    pass "senha do hotspot gerada por device (atual: $HP)"
+    if sudo test -s /var/lib/printserver/credentials/hotspot-password 2>/dev/null; then
+        pass "senha do hotspot presente (valor não exibido)"
+    else
+        warn "arquivo da senha do hotspot ausente ou vazio"
+    fi
 fi
 
 section "V06 Sudo NOPASSWD + SSH passwd"

@@ -88,7 +88,8 @@ Se o acesso for perdido:
   não tiver IP válido por dois minutos, volta para o hotspot.
 - Coloque o SD no computador, crie um arquivo vazio chamado `reset-hotspot`
   na partição de boot e devolva o cartão à Pi. No próximo boot o
-  equipamento volta ao hotspot com a senha padrão de WiFi.
+  equipamento volta ao hotspot. A senha do WiFi não é alterada: se ela foi
+  trocada no painel, continue usando a senha escolhida.
 - O acesso de suporte é por SSH na ethernet, nunca pelo hotspot. A imagem
   é selada sem chaves de acesso e sem login por senha: para entrar, adicione
   sua chave pública em `/home/printer/.ssh/authorized_keys`. As chaves do

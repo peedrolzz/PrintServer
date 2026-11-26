@@ -98,7 +98,8 @@ mv -f "$file.tmp.$$" "$file"
 for old in "$NM_DIR"/*.nmconnection; do
     [[ -f "$old" && "$old" != "$file" ]] || continue
     grep -q '^type=wifi$' "$old" || continue
-    sed -i 's/^autoconnect=true$/autoconnect=false/' "$old" || true
+    sed -i 's/^autoconnect=true$/autoconnect=false/' "$old" || fail "failed to disable old profile $old"
+    grep -q '^autoconnect=true$' "$old" && fail "old profile still has autoconnect enabled: $old"
 done
 
 install -d -o root -g root -m 0755 /etc/printserver

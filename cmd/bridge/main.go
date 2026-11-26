@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -46,6 +45,27 @@ func bridgeTokenModeFrom(markerPath string) bool {
 	return err == nil
 }
 
+// loadBridgeAuth relê o marcador e o token. Usado no arranque e no SIGHUP
+// para que uma troca de modo no painel não deixe o bridge com a política
+// antiga até o próximo restart.
+func loadBridgeAuth(log *slog.Logger, tokenPath string) ([]byte, bool) {
+	requireToken := bridgeTokenModeEnabled()
+	if !requireToken {
+		return nil, false
+	}
+	tokenRaw, err := os.ReadFile(tokenPath)
+	if err != nil {
+		log.Error("bridge: cannot read token", "err", err)
+		os.Exit(1)
+	}
+	token := trimEOL(tokenRaw)
+	if len(token) < 32 {
+		log.Error("bridge: token too short, require >=32 bytes")
+		os.Exit(1)
+	}
+	return token, true
+}
+
 func main() {
 	cfgPath := flag.String("config", envOr("PRINTBRIDGE_CONFIG", defaultConfig), "printers.json path")
 	tokenPath := flag.String("token", envOr("PRINTBRIDGE_TOKEN", defaultTokenPath), "shared HMAC token file")
@@ -65,20 +85,7 @@ func main() {
 		slog.String("config", *cfgPath),
 	)
 
-	requireToken := bridgeTokenModeEnabled()
-	var token []byte
-	if requireToken {
-		tokenRaw, err := os.ReadFile(*tokenPath)
-		if err != nil {
-			log.Error("bridge: cannot read token", "err", err)
-			os.Exit(1)
-		}
-		token = trimEOL(tokenRaw)
-		if len(token) < 32 {
-			log.Error("bridge: token too short, require >=32 bytes")
-			os.Exit(1)
-		}
-	}
+	token, requireToken := loadBridgeAuth(log, *tokenPath)
 
 	cfg, err := config.LoadPrinters(*cfgPath)
 	if err != nil {
@@ -102,13 +109,14 @@ func main() {
 			return
 		case <-hup:
 			log.Info("bridge: SIGHUP, reloading config")
-			closeAll(listeners)
 			reloaded, err := config.LoadPrinters(*cfgPath)
 			if err != nil {
 				log.Error("bridge: reload failed, keeping previous", "err", err)
 				continue
 			}
+			closeAll(listeners)
 			cfg = reloaded
+			token, requireToken = loadBridgeAuth(log, *tokenPath)
 		}
 	}
 }
@@ -192,10 +200,9 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 		msg = append(msg, []byte(strconv.Itoa(p.TCPPort))...)
 
 		if !auth.VerifyRawHMAC(token, msg, h[28:60]) {
-			log.Warn("bridge: bad mac",
-				slog.String("got_mac_hex", hex.EncodeToString(h[28:60])),
-				logger.ClientCIDR(conn.RemoteAddr()),
-			)
+			// Nunca registrar o MAC recebido: com nonce/timestamp válidos ele
+			// pode ser reutilizado para replay dentro da janela de um minuto.
+			log.Warn("bridge: bad mac", logger.ClientCIDR(conn.RemoteAddr()))
 			return
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(jobTimeout))

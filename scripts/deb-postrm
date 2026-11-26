@@ -11,7 +11,8 @@ case "$1" in
             printserver-hotspot.service \
             printserver-network.service \
             printserver-firstboot.service \
-            printserver-helper.service
+            printserver-helper.service \
+            printserver-watchdog.timer
         do
             systemctl disable "$u" 2>/dev/null || true
             systemctl stop "$u"    2>/dev/null || true
@@ -21,5 +22,20 @@ case "$1" in
         systemctl daemon-reload || true
         ;;
 esac
+
+# No purge o aparelho não volta mais: remover credenciais, identidade e log.
+# No remove simples, preservar tudo para permitir reinstalação sem perda.
+if [ "$1" = "purge" ]; then
+    rm -rf /var/lib/printserver/credentials
+    rm -f  /var/log/printserver-firstboot.log
+    rm -f  /etc/printserver/device.json
+    rm -f  /etc/printserver/firstboot.flag
+    rm -f  /etc/printserver/mode
+    rm -f  /etc/printserver/wifi-ssid
+    rm -f  /etc/printserver/hostapd.conf
+    for f in /etc/NetworkManager/system-connections/wifi-*.nmconnection; do
+        [ -f "$f" ] && rm -f "$f"
+    done
+fi
 
 exit 0

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -71,6 +72,18 @@ func (m *Manager) Verify(r *http.Request) error {
 	if time.Since(time.Unix(s.IssuedAt, 0)) > time.Duration(s.MaxAge)*time.Second {
 		return ErrBadSession
 	}
+	return nil
+}
+
+// RotateKey invalida todos os cookies já emitidos. Usar no logout e na
+// troca de senha: apagar apenas o cookie do navegador não revoga uma cópia
+// que tenha sido roubada.
+func (m *Manager) RotateKey() error {
+	key := make([]byte, len(m.key))
+	if _, err := rand.Read(key); err != nil {
+		return err
+	}
+	m.key = key
 	return nil
 }
 

@@ -11,10 +11,13 @@ fi
 
 DEVICE_ID="$("$TOOL" device-id "$CONFIG_DIR/device.json" 2>/dev/null || echo UNKNOWN)"
 HOSTNAME="$(hostname 2>/dev/null || echo printserver)"
+SUFFIX="${HOSTNAME##*-}"
+SUFFIX="${SUFFIX,,}"
 ETH_IP="$(ip -4 -br addr show eth0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
-WLAN_IP="$(ip -4 -br addr show wlan0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
 SSID="$(grep -E '^ssid=' /etc/printserver/hostapd.conf 2>/dev/null | cut -d= -f2)"
 
+# Nunca colocar senhas no banner: ele é legível por todos e fica desatualizado
+# depois que o operador troca a credencial. O endereço estável é o mDNS.
 cat > /etc/issue <<EOF
 
   PrintServer
@@ -23,11 +26,10 @@ cat > /etc/issue <<EOF
   Hostname:    $HOSTNAME.local
 
   WiFi SSID:   $SSID
-  WiFi senha:  printserver
-  Panel URL:   https://$WLAN_IP (hotspot)
+  WiFi senha:  veja no painel
+  Panel URL:   https://printserver-${SUFFIX}.local
                https://${ETH_IP:-eth0-down} (ethernet)
-  Senha inicial do painel: printserver
-  (o painel exige a troca no primeiro acesso)
+  Acesso ao painel: veja a tela de configuração inicial
 
 EOF
 chmod 0644 /etc/issue

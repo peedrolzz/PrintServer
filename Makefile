@@ -38,6 +38,7 @@ host:
 
 .PHONY: deb
 deb: all
+	@rm -rf $(PKG_DIR)/printserver_$(VERSION)_arm64
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin
@@ -51,7 +52,7 @@ deb: all
 	install -m 0755 $(BIN_DIR)/printserver-helper   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
 	install -m 0755 $(BIN_DIR)/printserver-tool     $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
 	install -m 0755 scripts/printserver-firstboot              $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
-	install -m 0755 scripts/printserver-seal-image             $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
+	# seal-image é ferramenta da estação de imagem: nunca vai para a Pi de campo.
 	install -m 0755 scripts/printserver-apply-network-config   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-update-issue           $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-set-mode               $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
@@ -79,7 +80,11 @@ deb: all
 	install -m 0755 scripts/deb-postinst $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/postinst
 	install -m 0755 scripts/deb-postrm   $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/postrm
 	printf '{\n  "printers": [],\n  "config_revision": 0\n}\n' > $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/printserver/printers.json
+	chmod 0644 $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/printserver/printers.json
 	install -m 0644 config/nftables.conf $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/printserver/nftables.conf
+	# Estes dois arquivos são configurados na Pi. Sem conffiles o dpkg
+	# sobrescreve a lista de impressoras e as regras locais em cada upgrade.
+	printf '/etc/printserver/printers.json\n/etc/printserver/nftables.conf\n' > $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/conffiles
 	# NOTE: firstboot.flag is created by the postinst only on FRESH installs,
 	# not on upgrades, so cloned SDs still boot with per-device credentials
 	# but upgrading an already provisioned Pi does NOT re-run firstboot.

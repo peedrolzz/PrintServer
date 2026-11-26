@@ -44,8 +44,10 @@ func main() {
 
 	cfg, err := config.LoadPrinters(*cfgPath)
 	if err != nil {
-		log.Warn("discover: existing config invalid, starting empty", "err", err)
-		cfg = &config.Printers{}
+		// Nunca substituir uma config corrompida por uma vazia: isso apagaria
+		// serial e porta das impressoras já pareadas após uma queda de energia.
+		log.Error("discover: existing config invalid, refusing to overwrite", "err", err)
+		os.Exit(1)
 	}
 	changed := mergeConfig(cfg, devices, log)
 	if !changed {
@@ -218,21 +220,36 @@ func atomicSave(path string, cfg *config.Printers) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
+	tmp := fmt.Sprintf("%s.tmp.%d", path, os.Getpid())
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
 	if _, err := f.Write(append(b, '\n')); err != nil {
 		f.Close()
+		os.Remove(tmp)
 		return err
 	}
 	if err := f.Sync(); err != nil {
 		f.Close()
+		os.Remove(tmp)
 		return err
 	}
-	f.Close()
-	return os.Rename(tmp, path)
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	// Sem o sync do diretório o rename pode não sobreviver a uma queda.
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func signalReload() error {

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-umask 0022
+# O hostapd.conf contém a senha do WiFi. Criar arquivos com 0600 desde o
+# início evita uma janela em que a chave fica legível por outros usuários.
+umask 0077
 
 STATE_DIR=/var/lib/printserver
 CRED_DIR="$STATE_DIR/credentials"
@@ -99,6 +101,11 @@ if [[ "$MODE" == "hotspot" ]]; then
 unmanaged-devices=interface-name:$WLAN_IF
 EOF
     chmod 0644 "$NM_DIR/conf.d/10-printserver-unmanaged.conf"
+    # O hotplug e o watchdog podem trocar para hotspot em runtime, quando o
+    # NM já estava gerenciando a interface. Aplicar a mudança agora, senão
+    # o hostapd disputa o wlan0 com uma conexão cliente ainda ativa.
+    /usr/bin/nmcli general reload >/dev/null 2>&1 || true
+    /usr/bin/nmcli device set "$WLAN_IF" managed no >/dev/null 2>&1 || true
     log "NM told to ignore $WLAN_IF"
 else
     ip addr flush dev "$WLAN_IF" 2>/dev/null || true

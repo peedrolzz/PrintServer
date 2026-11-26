@@ -38,6 +38,9 @@ var allowed = map[string][]string{
 	"reload-bridge-config": {
 		"/usr/bin/systemctl", "kill", "-s", "HUP", "printserver-bridge.service",
 	},
+	"bridge-status": {
+		"/usr/bin/systemctl", "is-active", "printserver-bridge.service",
+	},
 	"reload-hotspot": {
 		"/usr/bin/systemctl", "restart", "printserver-network.service",
 	},

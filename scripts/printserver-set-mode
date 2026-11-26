@@ -24,10 +24,22 @@ if [[ "$MODE" == "client" && -f /etc/printserver/wifi-ssid ]]; then
         c="${SSID:i:1}"
         case "$c" in [A-Za-z0-9_-]) safe+="$c" ;; esac
     done
-    PROFILE="wifi-$safe"
+
+    # O nmcli aceita id, uuid ou caminho. O nome do arquivo não é um id;
+    # usar o SSID gravado no perfil para não depender do autoconnect.
+    UUID=""
+    PROFILE="/etc/NetworkManager/system-connections/wifi-${safe}.nmconnection"
+    if [[ -f "$PROFILE" ]]; then
+        UUID="$(sed -n 's/^uuid=//p' "$PROFILE" | head -1)"
+    fi
+
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
-        if /usr/bin/nmcli connection up "$PROFILE" >/dev/null 2>&1; then
-            echo "[set-mode] NM ativou $PROFILE"
+        if [[ -n "$UUID" ]] && /usr/bin/nmcli connection up uuid "$UUID" >/dev/null 2>&1; then
+            echo "[set-mode] NM ativou o perfil pelo uuid"
+            break
+        fi
+        if /usr/bin/nmcli connection up id "$SSID" >/dev/null 2>&1; then
+            echo "[set-mode] NM ativou o perfil pelo id"
             break
         fi
         sleep 1

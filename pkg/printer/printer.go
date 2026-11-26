@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -28,6 +29,8 @@ var ErrBusy = errors.New("printer: queue full")
 
 var ErrNoDevice = errors.New("printer: device absent")
 
+var ErrTimeout = errors.New("printer: write timed out")
+
 func (d *Device) WriteJob(src io.Reader, max int64, deadline time.Duration) (int64, error) {
 	select {
 	case d.queue <- struct{}{}:
@@ -47,7 +50,19 @@ func (d *Device) WriteJob(src io.Reader, max int64, deadline time.Duration) (int
 	}
 	defer fd.Close()
 
+	// Fechar o descritor a partir de outro goroutine desbloqueia um write(2)
+	// preso na USB e impede que a fila fique travada para sempre.
+	var timedOut atomic.Bool
+	timer := time.AfterFunc(deadline, func() {
+		timedOut.Store(true)
+		_ = fd.Close()
+	})
+	defer timer.Stop()
+
 	limited := io.LimitReader(src, max)
-	_ = deadline
-	return io.Copy(fd, limited)
+	n, err := io.Copy(fd, limited)
+	if timedOut.Load() {
+		return n, ErrTimeout
+	}
+	return n, err
 }
