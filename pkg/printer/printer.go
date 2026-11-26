@@ -31,6 +31,15 @@ var ErrNoDevice = errors.New("printer: device absent")
 
 var ErrTimeout = errors.New("printer: write timed out")
 
+// writerOnly esconde o método ReadFrom de *os.File. Sem isso, o io.Copy usa
+// splice(2) quando a origem é um socket TCP; splice não funciona com device
+// de caractere (usblp) e falha com "splice: invalid argument".
+type writerOnly struct{ io.Writer }
+
+func copyJob(dst io.Writer, src io.Reader, max int64) (int64, error) {
+	return io.Copy(dst, io.LimitReader(src, max))
+}
+
 func (d *Device) WriteJob(src io.Reader, max int64, deadline time.Duration) (int64, error) {
 	select {
 	case d.queue <- struct{}{}:
@@ -59,8 +68,7 @@ func (d *Device) WriteJob(src io.Reader, max int64, deadline time.Duration) (int
 	})
 	defer timer.Stop()
 
-	limited := io.LimitReader(src, max)
-	n, err := io.Copy(fd, limited)
+	n, err := copyJob(writerOnly{fd}, src, max)
 	if timedOut.Load() {
 		return n, ErrTimeout
 	}
