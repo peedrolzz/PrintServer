@@ -22,6 +22,7 @@ systemctl stop printserver-agent.service printserver-bridge.service printserver-
 
 echo "[seal] wiping per-device state"
 rm -rf /var/lib/printserver/credentials/*
+rm -f  /var/log/printserver-firstboot.log
 rm -f  /var/lib/printserver/journal.json
 rm -f  /var/lib/printserver/state.json
 rm -f  /etc/printserver/device.json

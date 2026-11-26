@@ -61,37 +61,62 @@ log "hostname set to $NEW_HOSTNAME"
 # Impressão aberta é o padrão. O modo com token só é ativado pelo painel.
 rm -f "$CONFIG_DIR/bridge-token-mode" "$CONFIG_DIR/bridge-open"
 
-ADMIN_PW="printserver"
-HOTSPOT_PW="printserver"
-HASH="$(printf '%s\n' "$ADMIN_PW" | "$TOOL" hash-password)"
-BRIDGE_TOKEN="$(openssl rand -hex 32)"
-
-install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/portal-admin"
-printf '%s\n' "$HASH" > "$CRED_DIR/portal-admin"
-
-install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/hotspot-password"
-printf '%s\n' "$HOTSPOT_PW" > "$CRED_DIR/hotspot-password"
-
-install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/bridge-token"
-printf '%s\n' "$BRIDGE_TOKEN" > "$CRED_DIR/bridge-token"
-
-install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/first-run.flag"
-log "first-run flag set"
-
-PRIMARY_IP="$(hostname -I | awk '{print $1}')"
-SAN="subjectAltName=DNS:$NEW_HOSTNAME.local,DNS:$NEW_HOSTNAME,DNS:printserver.local,IP:10.42.0.1"
-if [[ -n "$PRIMARY_IP" ]]; then
-    SAN="${SAN},IP:${PRIMARY_IP}"
+# Só cria o que ainda não existe. Uma segunda execução não pode trocar
+# a senha escolhida, o token nem o certificado já aceito pelo navegador.
+if [[ -s "$CRED_DIR/portal-admin" ]]; then
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-admin"
+    chmod 0600 "$CRED_DIR/portal-admin"
+    log "admin password preserved"
+else
+    HASH="$(printf '%s\n' 'printserver' | "$TOOL" hash-password)"
+    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/portal-admin"
+    printf '%s\n' "$HASH" > "$CRED_DIR/portal-admin"
+    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/first-run.flag"
+    log "first-run flag set"
+    log "panel login: printserver (change on first access)"
 fi
-openssl req -x509 -newkey rsa:2048 -nodes \
-    -out "$CRED_DIR/portal-cert.pem" \
-    -keyout "$CRED_DIR/portal-key.pem" \
-    -subj "/CN=$NEW_HOSTNAME.local" \
-    -addext "$SAN" \
-    -days 3650 >/dev/null 2>&1
-chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-cert.pem" "$CRED_DIR/portal-key.pem"
-chmod 0600 "$CRED_DIR/portal-key.pem"
-chmod 0644 "$CRED_DIR/portal-cert.pem"
+
+if [[ -s "$CRED_DIR/hotspot-password" ]]; then
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/hotspot-password"
+    chmod 0600 "$CRED_DIR/hotspot-password"
+    log "hotspot password preserved"
+else
+    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/hotspot-password"
+    printf '%s\n' 'printserver' > "$CRED_DIR/hotspot-password"
+    log "hotspot password: printserver"
+fi
+
+if [[ -s "$CRED_DIR/bridge-token" ]]; then
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/bridge-token"
+    chmod 0600 "$CRED_DIR/bridge-token"
+    log "bridge token preserved"
+else
+    install -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0600 /dev/null "$CRED_DIR/bridge-token"
+    openssl rand -hex 32 > "$CRED_DIR/bridge-token"
+    log "bridge token created"
+fi
+
+if [[ -s "$CRED_DIR/portal-cert.pem" && -s "$CRED_DIR/portal-key.pem" ]]; then
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-cert.pem" "$CRED_DIR/portal-key.pem"
+    chmod 0600 "$CRED_DIR/portal-key.pem"
+    chmod 0644 "$CRED_DIR/portal-cert.pem"
+    log "tls certificate preserved"
+else
+    PRIMARY_IP="$(hostname -I | awk '{print $1}')"
+    SAN="subjectAltName=DNS:$NEW_HOSTNAME.local,DNS:$NEW_HOSTNAME,DNS:printserver.local,IP:10.42.0.1"
+    if [[ -n "$PRIMARY_IP" ]]; then
+        SAN="${SAN},IP:${PRIMARY_IP}"
+    fi
+    openssl req -x509 -newkey rsa:2048 -nodes \
+        -out "$CRED_DIR/portal-cert.pem" \
+        -keyout "$CRED_DIR/portal-key.pem" \
+        -subj "/CN=$NEW_HOSTNAME.local" \
+        -addext "$SAN" \
+        -days 3650 >/dev/null 2>&1
+    chown "$PRINT_USER":"$PRINT_GROUP" "$CRED_DIR/portal-cert.pem" "$CRED_DIR/portal-key.pem"
+    chmod 0600 "$CRED_DIR/portal-key.pem"
+    chmod 0644 "$CRED_DIR/portal-cert.pem"
+fi
 PORTAL_FP="$("$TOOL" fingerprint-sha256 "$CRED_DIR/portal-cert.pem")"
 
 rm -f /etc/ssh/ssh_host_*
@@ -104,8 +129,6 @@ install -d -o "$PRINT_USER" -g "$PRINT_GROUP" -m 0750 "$CRED_DIR/enterprise-ca"
 log "device id: $DEVICE_ID"
 log "hostname: $NEW_HOSTNAME.local"
 log "hotspot ssid: PrintServer-${DEVICE_ID: -4}"
-log "hotspot password: $HOTSPOT_PW"
-log "panel login: printserver (change on first access)"
 log "tls sha-256: $PORTAL_FP"
 
 if [[ -n "$PRESEED" ]]; then

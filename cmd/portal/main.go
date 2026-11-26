@@ -459,6 +459,15 @@ func (a *app) csrfFail(w http.ResponseWriter, r *http.Request, back string) {
 	})
 }
 
+func (a *app) configError(w http.ResponseWriter, err error) {
+	a.log.Error("portal: config missing", "err", err)
+	a.render(w, "error", pageData{
+		Title:   "Configuração incompleta",
+		Message: "O aparelho ainda não terminou a configuração inicial. Reinicie o aparelho e tente de novo.",
+		Error:   "/login",
+	})
+}
+
 func (a *app) getLogin(w http.ResponseWriter, r *http.Request) {
 	csrf, err := auth.IssueCSRF(w, r)
 	if err != nil {
@@ -486,8 +495,7 @@ func (a *app) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	phc, err := os.ReadFile(a.adminHashPath)
 	if err != nil {
-		a.log.Error("portal: admin hash read", "err", err)
-		http.Error(w, "config", http.StatusInternalServerError)
+		a.configError(w, err)
 		return
 	}
 	ok, _ := crypto.VerifyPassword(pw, strings.TrimSpace(string(phc)))
@@ -991,7 +999,7 @@ func (a *app) postPassword(w http.ResponseWriter, r *http.Request) {
 	csrf, _ := auth.IssueCSRF(w, r)
 	phc, err := os.ReadFile(a.adminHashPath)
 	if err != nil {
-		http.Error(w, "config", http.StatusInternalServerError)
+		a.configError(w, err)
 		return
 	}
 	ok, _ := crypto.VerifyPassword(cur, strings.TrimSpace(string(phc)))
