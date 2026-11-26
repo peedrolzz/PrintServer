@@ -31,6 +31,8 @@ const (
 	jobTimeout          = 30 * time.Second
 	handshakeTimeout    = 5 * time.Second
 	maxPerIPPerMin      = 10
+	bridgeAckOK         = 0 // confirmação enviada ao painel após escrever no USB
+	bridgeAckErr        = 1
 )
 
 // bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
@@ -209,28 +211,34 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 	}
 	start := time.Now()
 	n, err := dev.WriteJob(conn, maxJob, jobTimeout)
+	ack := byte(bridgeAckOK)
 	if err != nil {
+		ack = bridgeAckErr
 		if errors.Is(err, printer.ErrBusy) {
 			log.Warn("bridge: queue full",
 				slog.String("printer", p.Name),
 				logger.ClientCIDR(conn.RemoteAddr()),
 			)
-			return
+		} else {
+			log.Error("bridge: job error",
+				"err", err,
+				slog.String("printer", p.Name),
+				logger.HashedSerial(p.SerialNumber),
+			)
 		}
-		log.Error("bridge: job error",
-			"err", err,
+	} else {
+		log.Info("bridge: job ok",
 			slog.String("printer", p.Name),
+			slog.Int64("bytes", n),
+			slog.Duration("duration", time.Since(start)),
 			logger.HashedSerial(p.SerialNumber),
+			logger.ClientCIDR(conn.RemoteAddr()),
 		)
-		return
 	}
-	log.Info("bridge: job ok",
-		slog.String("printer", p.Name),
-		slog.Int64("bytes", n),
-		slog.Duration("duration", time.Since(start)),
-		logger.HashedSerial(p.SerialNumber),
-		logger.ClientCIDR(conn.RemoteAddr()),
-	)
+	// Clientes comuns (porta 9100) não leem resposta: escrever um byte neles
+	// falha sem efeito. O painel, sim, usa esse byte para dizer a verdade.
+	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_, _ = conn.Write([]byte{ack})
 }
 
 func envOr(k, def string) string {

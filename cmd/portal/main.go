@@ -61,6 +61,8 @@ const (
 	sessionTTL           = 2 * time.Hour
 	maxLoginPerMinute    = 10
 	maxConnsConcurr      = 25
+	bridgeAckOK          = 0 // bridge responde 0 se o job chegou ao USB
+	bridgeAckErr         = 1
 )
 
 type app struct {
@@ -891,14 +893,31 @@ func (a *app) sendTestJob(p config.Printer) error {
 		}
 	}
 
-	payload := []byte("\x1b@*** Teste PrintServer ***\n")
+	// Impressoras laser (ex.: RICOH SP 310) entendem PCL, não ESC/POS.
+	// O texto puro mais um form feed funciona nos dois mundos: a página é
+	// ejetada em vez de ficar presa no buffer esperando um fim de trabalho.
+	payload := []byte("\x1bE")
+	payload = append(payload, []byte("*** Teste PrintServer ***\n")...)
 	payload = append(payload, []byte("PrintServer · "+a.deviceID+"\n")...)
 	payload = append(payload, []byte(time.Now().Format("2006-01-02 15:04:05")+"\n\n")...)
 	payload = append(payload, []byte("Impressora: "+p.Name+"\n")...)
 	payload = append(payload, []byte("Porta TCP:  "+strconv.Itoa(p.TCPPort)+"\n\n\n")...)
-	payload = append(payload, 0x1D, 'V', 0x00)
+	payload = append(payload, 0x0C, 0x1B, 'E')
 	if _, err := conn.Write(payload); err != nil {
 		return err
+	}
+	// Avisa o bridge que o trabalho terminou, mas mantém a leitura aberta
+	// para receber a confirmação real da escrita no dispositivo USB.
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.CloseWrite()
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	var ack [1]byte
+	if _, err := io.ReadFull(conn, ack[:]); err != nil {
+		return fmt.Errorf("sem confirmação da impressora: %w", err)
+	}
+	if ack[0] != bridgeAckOK {
+		return errors.New("a impressora não confirmou o trabalho")
 	}
 	return nil
 }
