@@ -62,6 +62,9 @@ const (
 	sessionTTL           = 2 * time.Hour
 	maxLoginPerMinute    = 10
 	maxConnsConcurr      = 25
+	// Depois de trocar de rede o hotspot cai. Oito segundos dão tempo para
+	// ler e tocar no endereço antes que o painel fique fora do ar.
+	wifiSwitchDelay = 8 * time.Second
 )
 
 type app struct {
@@ -585,7 +588,7 @@ func (a *app) postWifiScan(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		a.netMu.Lock()
 		defer a.netMu.Unlock()
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(wifiSwitchDelay)
 		if _, err := helperclient.Send("", "wifi-scan"); err != nil {
 			a.log.Warn("portal: wifi-scan failed", "err", err)
 		}
@@ -618,7 +621,7 @@ func (a *app) postWifiHotspot(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		a.netMu.Lock()
 		defer a.netMu.Unlock()
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(wifiSwitchDelay)
 		if _, err := helperclient.Send("", "mode-hotspot"); err != nil {
 			a.log.Warn("portal: mode-hotspot failed", "err", err)
 		}
@@ -800,7 +803,7 @@ func (a *app) postWifiConnect(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		a.netMu.Lock()
 		defer a.netMu.Unlock()
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(wifiSwitchDelay)
 		if _, err := helperclient.Send("", "mode-client"); err != nil {
 			a.log.Warn("portal: switch to client mode failed", "err", err)
 		}
@@ -955,7 +958,7 @@ func (a *app) saveHotspotPage(w http.ResponseWriter, r *http.Request, msg string
 	go func() {
 		a.netMu.Lock()
 		defer a.netMu.Unlock()
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(wifiSwitchDelay)
 		if _, err := helperclient.Send("", "reload-hotspot"); err != nil {
 			a.log.Warn("portal: hotspot reload failed", "err", err)
 		}

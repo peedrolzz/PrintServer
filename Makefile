@@ -113,6 +113,7 @@ ci-scan:
 	@! grep -rE 'NOPASSWD:\s*ALL' systemd udev scripts | grep -vE '^[^:]+:\s*#|audit\.sh:|"[^"]*NOPASSWD' || (echo 'sudo NOPASSWD ALL found'; exit 1)
 	@! find . -name '.codex' -o -name '.cursor' -o -name '.claude' -o -name '.bash_history' -o -name '*.backup*' -o -name '*.bak' | grep -q . || (echo 'developer artefact found'; exit 1)
 	@! grep -rE 'AGENT_TOKEN\s*=\s*"[^"]+"' . 2>/dev/null | grep -v _test.go | grep -q . || (echo 'hardcoded token'; exit 1)
+	@! grep -q 'DeviceAllow=char-[0-9]' systemd/printserver-bridge.service || (echo 'DeviceAllow numerico nao resolve no systemd'; exit 1)
 	@echo "ci-scan ok"
 
 .PHONY: clean

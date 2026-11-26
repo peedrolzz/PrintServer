@@ -8,11 +8,11 @@
 <ul class="list">
   {{range .Printers}}
   <li>
-    <form method="post" action="/test-print" style="display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px">
+    <form method="post" action="/test-print" class="action-row">
       <input type="hidden" name="_csrf" value="{{$.CSRF}}">
       <input type="hidden" name="serial" value="{{.SerialNumber}}">
       <span>{{.Name}}</span>
-      <button class="btn primary" style="width:auto;min-height:44px;padding:8px 14px" type="submit">Imprimir</button>
+      <button class="btn primary" type="submit">Imprimir</button>
     </form>
   </li>
   {{end}}

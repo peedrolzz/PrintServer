@@ -13,12 +13,12 @@
 <h2>Impressoras</h2>
 <ul class="list">
   {{range .Printers}}
-  <li><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+  <li><div class="row-inline">
     <span>{{.Name}}</span><span class="tag mono">{{.TCPPort}}</span>
   </div></li>
   {{end}}
 </ul>
-<p><a class="btn" href="/test-print" style="margin-top:12px">Imprimir teste</a></p>
+<div class="mt"><a class="btn" href="/test-print">Imprimir teste</a></div>
 {{end}}
 
 <h2>Configurar</h2>

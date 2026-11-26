@@ -118,6 +118,11 @@ input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;accent-color:v
 .list button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
   min-height:48px;padding:8px 4px;background:none;border:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .list button:hover{background:var(--desk)}
+/* Linhas com ação: o botão respira acima e abaixo em vez de encostar na linha. */
+.list .action-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:60px;padding:12px 4px}
+.list .action-row .btn{width:auto;min-height:44px;padding:8px 16px;flex:none}
+.row-inline{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 4px}
 .tag{font-size:11px;color:var(--ink-3);white-space:nowrap}
 .bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px;margin-left:8px}
 .bars i{width:3px;background:var(--rule);border-radius:1px}

@@ -1,6 +1,6 @@
 # USB printers: import vendor/model/serial and create persistent symlink.
 ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", IMPORT{builtin}="usb_id"
-ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", ENV{ID_TYPE}=="printer", ENV{ID_SERIAL_SHORT}!="", SYMLINK+="printserver/by-serial/%E{ID_SERIAL_SHORT}"
-ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", ENV{ID_TYPE}=="printer", ENV{ID_SERIAL_SHORT}!="", TAG+="systemd", ENV{SYSTEMD_WANTS}+="printserver-discover.service"
-# Allow the "printserver" group to write to the printer device:
-ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", ENV{ID_TYPE}=="printer", MODE="0660", GROUP="lp"
+ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", ENV{ID_SERIAL_SHORT}!="", SYMLINK+="printserver/by-serial/%E{ID_SERIAL_SHORT}"
+ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", ENV{ID_SERIAL_SHORT}!="", TAG+="systemd", ENV{SYSTEMD_WANTS}+="printserver-discover.service"
+# Permissão independe de ID_TYPE: algumas impressoras não exportam esse campo.
+ACTION=="add", SUBSYSTEM=="usbmisc", KERNEL=="lp*", MODE="0660", GROUP="lp"

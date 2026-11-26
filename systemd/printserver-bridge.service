@@ -1,14 +1,14 @@
 [Unit]
 Description=PrintServer Bridge (TCP -> USB)
-After=network-online.target printserver-firstboot.service
-Wants=network-online.target
+After=network-online.target printserver-firstboot.service modprobe@usblp.service
+Wants=network-online.target modprobe@usblp.service
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=printserver
-Group=printserver
-SupplementaryGroups=lp
+Group=lp
+SupplementaryGroups=printserver
 ExecStart=/usr/bin/printserver-bridge --config=/etc/printserver/printers.json --bind=0.0.0.0
 Restart=always
 RestartSec=3
@@ -17,8 +17,9 @@ RestartSec=3
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=no
-# Glob por path não é suportado; liberar o major do usblp cobre lp0..lp99.
-DeviceAllow=char-180:* rw
+# DeviceAllow usa o nome do grupo em /proc/devices, não o número do major.
+# "char-180:*" não resolve e, com DevicePolicy=closed, derruba toda a lista.
+DeviceAllow=char-usblp rw
 DevicePolicy=closed
 ProtectSystem=strict
 ReadWritePaths=/var/lib/printserver /run/printserver
