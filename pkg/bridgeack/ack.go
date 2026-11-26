@@ -6,6 +6,7 @@ package bridgeack
 import (
 	"errors"
 	"io/fs"
+	"syscall"
 
 	"github.com/printserver/printserver/pkg/printer"
 )
@@ -17,6 +18,7 @@ const (
 	NoDevice
 	Timeout
 	Permission
+	Denied
 )
 
 // FromError transforma o erro da escrita USB em um código conhecido pelo painel.
@@ -30,6 +32,8 @@ func FromError(err error) byte {
 		return NoDevice
 	case errors.Is(err, printer.ErrTimeout):
 		return Timeout
+	case errors.Is(err, syscall.EPERM):
+		return Denied
 	case errors.Is(err, fs.ErrPermission):
 		return Permission
 	default:
@@ -47,7 +51,9 @@ func Message(code byte) string {
 	case Timeout:
 		return "a impressora não respondeu a tempo"
 	case Permission:
-		return "sem permissão para usar a impressora"
+		return "sem permissão no arquivo da impressora"
+	case Denied:
+		return "acesso ao USB bloqueado pelo serviço"
 	default:
 		return "a impressora não confirmou o trabalho"
 	}

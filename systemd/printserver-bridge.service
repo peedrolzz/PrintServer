@@ -17,10 +17,11 @@ RestartSec=3
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=no
-# DeviceAllow usa o nome do grupo em /proc/devices, não o número do major.
-# "char-180:*" não resolve e, com DevicePolicy=closed, derruba toda a lista.
-DeviceAllow=char-usblp rw
-DevicePolicy=closed
+# Sem filtro de device cgroup. O allow-list por grupo ou major não resolve
+# de forma confiável quando o módulo usblp carrega depois do start, e um
+# DevicePolicy=closed com lista vazia derruba a impressão. O acesso ao
+# dispositivo continua restrito pela regra udev (root:lp, 0660) e pelo grupo
+# do serviço; o restante do hardening permanece ativo.
 ProtectSystem=strict
 ReadWritePaths=/var/lib/printserver /run/printserver
 ProtectHome=yes
