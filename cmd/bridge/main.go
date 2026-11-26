@@ -32,6 +32,7 @@ const (
 	jobTimeout          = 30 * time.Second
 	handshakeTimeout    = 5 * time.Second
 	maxPerIPPerMin      = 10
+	maxAckDetail        = 160
 )
 
 // bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
@@ -233,10 +234,17 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 			logger.ClientCIDR(conn.RemoteAddr()),
 		)
 	}
-	// Clientes comuns (porta 9100) não leem resposta: escrever um byte neles
-	// falha sem efeito. O painel, sim, usa esse byte para dizer a verdade.
+	// Clientes comuns (porta 9100) não leem resposta: escrever bytes neles
+	// falha sem efeito. O painel, sim, usa esses bytes para dizer a verdade.
 	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	_, _ = conn.Write([]byte{ack})
+	if err != nil {
+		msg := err.Error()
+		if len(msg) > maxAckDetail {
+			msg = msg[:maxAckDetail]
+		}
+		_, _ = conn.Write([]byte(msg))
+	}
 }
 
 func envOr(k, def string) string {

@@ -14,7 +14,7 @@ import (
 	"github.com/printserver/printserver/pkg/config"
 )
 
-func fakeBridge(t *testing.T, ack byte) (int, <-chan []byte) {
+func fakeBridge(t *testing.T, ack byte, detail string) (int, <-chan []byte) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -34,6 +34,9 @@ func fakeBridge(t *testing.T, ack byte) (int, <-chan []byte) {
 		data, _ := io.ReadAll(conn)
 		received <- data
 		_, _ = conn.Write([]byte{ack})
+		if detail != "" {
+			_, _ = conn.Write([]byte(detail))
+		}
 	}()
 
 	return ln.Addr().(*net.TCPAddr).Port, received
@@ -49,7 +52,7 @@ func testApp(t *testing.T) *app {
 }
 
 func TestSendTestJobWaitsForConfirmation(t *testing.T) {
-	port, received := fakeBridge(t, bridgeack.OK)
+	port, received := fakeBridge(t, bridgeack.OK, "")
 	a := testApp(t)
 	p := config.Printer{Name: "Impressora de teste", TCPPort: port, Enabled: true}
 
@@ -69,12 +72,16 @@ func TestSendTestJobWaitsForConfirmation(t *testing.T) {
 }
 
 func TestSendTestJobReportsBridgeFailure(t *testing.T) {
-	port, _ := fakeBridge(t, bridgeack.Failure)
+	port, _ := fakeBridge(t, bridgeack.Failure, "write /dev/usb/lp0: input/output error")
 	a := testApp(t)
 	p := config.Printer{Name: "Impressora de teste", TCPPort: port, Enabled: true}
 
-	if err := a.sendTestJob(p); err == nil {
+	err := a.sendTestJob(p)
+	if err == nil {
 		t.Fatal("bridge com falha deveria devolver erro ao painel")
+	}
+	if !strings.Contains(err.Error(), "input/output error") {
+		t.Fatalf("detalhe do bridge não chegou ao painel: %v", err)
 	}
 }
 

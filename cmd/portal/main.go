@@ -919,7 +919,14 @@ func (a *app) sendTestJob(p config.Printer) error {
 		return fmt.Errorf("sem confirmação da impressora: %w", err)
 	}
 	if ack[0] != bridgeack.OK {
-		return errors.New(bridgeack.Message(ack[0]))
+		msg := bridgeack.Message(ack[0])
+		// O bridge envia o erro real logo após o byte de falha. Sem esse
+		// detalhe não há como saber se foi a impressora, o cabo ou o USB.
+		var detail [200]byte
+		if n, err := conn.Read(detail[:]); err == nil && n > 0 {
+			msg += ": " + strings.TrimSpace(string(detail[:n]))
+		}
+		return errors.New(msg)
 	}
 	return nil
 }
