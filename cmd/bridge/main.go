@@ -17,6 +17,7 @@ import (
 
 	"github.com/printserver/printserver/internal/version"
 	"github.com/printserver/printserver/pkg/auth"
+	"github.com/printserver/printserver/pkg/bridgeack"
 	"github.com/printserver/printserver/pkg/config"
 	"github.com/printserver/printserver/pkg/logger"
 	"github.com/printserver/printserver/pkg/printer"
@@ -31,8 +32,6 @@ const (
 	jobTimeout          = 30 * time.Second
 	handshakeTimeout    = 5 * time.Second
 	maxPerIPPerMin      = 10
-	bridgeAckOK         = 0 // confirmação enviada ao painel após escrever no USB
-	bridgeAckErr        = 1
 )
 
 // bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
@@ -211,9 +210,8 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 	}
 	start := time.Now()
 	n, err := dev.WriteJob(conn, maxJob, jobTimeout)
-	ack := byte(bridgeAckOK)
+	ack := bridgeack.FromError(err)
 	if err != nil {
-		ack = bridgeAckErr
 		if errors.Is(err, printer.ErrBusy) {
 			log.Warn("bridge: queue full",
 				slog.String("printer", p.Name),

@@ -29,6 +29,7 @@ import (
 
 	"github.com/printserver/printserver/internal/version"
 	"github.com/printserver/printserver/pkg/auth"
+	"github.com/printserver/printserver/pkg/bridgeack"
 	"github.com/printserver/printserver/pkg/config"
 	"github.com/printserver/printserver/pkg/crypto"
 	"github.com/printserver/printserver/pkg/device"
@@ -61,8 +62,6 @@ const (
 	sessionTTL           = 2 * time.Hour
 	maxLoginPerMinute    = 10
 	maxConnsConcurr      = 25
-	bridgeAckOK          = 0 // bridge responde 0 se o job chegou ao USB
-	bridgeAckErr         = 1
 )
 
 type app struct {
@@ -916,8 +915,8 @@ func (a *app) sendTestJob(p config.Printer) error {
 	if _, err := io.ReadFull(conn, ack[:]); err != nil {
 		return fmt.Errorf("sem confirmação da impressora: %w", err)
 	}
-	if ack[0] != bridgeAckOK {
-		return errors.New("a impressora não confirmou o trabalho")
+	if ack[0] != bridgeack.OK {
+		return errors.New(bridgeack.Message(ack[0]))
 	}
 	return nil
 }

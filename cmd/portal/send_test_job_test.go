@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/printserver/printserver/pkg/bridgeack"
 	"github.com/printserver/printserver/pkg/config"
 )
 
@@ -48,7 +49,7 @@ func testApp(t *testing.T) *app {
 }
 
 func TestSendTestJobWaitsForConfirmation(t *testing.T) {
-	port, received := fakeBridge(t, bridgeAckOK)
+	port, received := fakeBridge(t, bridgeack.OK)
 	a := testApp(t)
 	p := config.Printer{Name: "Impressora de teste", TCPPort: port, Enabled: true}
 
@@ -68,11 +69,25 @@ func TestSendTestJobWaitsForConfirmation(t *testing.T) {
 }
 
 func TestSendTestJobReportsBridgeFailure(t *testing.T) {
-	port, _ := fakeBridge(t, bridgeAckErr)
+	port, _ := fakeBridge(t, bridgeack.Failure)
 	a := testApp(t)
 	p := config.Printer{Name: "Impressora de teste", TCPPort: port, Enabled: true}
 
 	if err := a.sendTestJob(p); err == nil {
 		t.Fatal("bridge com falha deveria devolver erro ao painel")
+	}
+}
+
+func TestBridgeErrorMessage(t *testing.T) {
+	tests := map[byte]string{
+		bridgeack.NoDevice:   "dispositivo USB",
+		bridgeack.Permission: "permissão",
+		bridgeack.QueueFull:  "ocupada",
+		bridgeack.Timeout:    "tempo",
+	}
+	for code, want := range tests {
+		if got := bridgeack.Message(code); !strings.Contains(got, want) {
+			t.Errorf("código %d: mensagem %q não contém %q", code, got, want)
+		}
 	}
 }
