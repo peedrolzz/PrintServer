@@ -116,3 +116,20 @@ func TestMaxPerIPPerMinFromEnv(t *testing.T) {
 		t.Fatalf("valor inválido deveria usar o padrão, got %d", got)
 	}
 }
+
+func TestMaxJobFromEnv(t *testing.T) {
+	t.Setenv("PRINTBRIDGE_MAX_JOB", "1048576")
+	if got := maxJobFromEnv(); got != 1048576 {
+		t.Fatalf("limite = %d, esperado 1048576", got)
+	}
+
+	t.Setenv("PRINTBRIDGE_MAX_JOB", "9999999999")
+	if got := maxJobFromEnv(); got != maxJobCap {
+		t.Fatalf("limite não foi limitado: %d", got)
+	}
+
+	t.Setenv("PRINTBRIDGE_MAX_JOB", "invalid")
+	if got := maxJobFromEnv(); got != maxJob {
+		t.Fatalf("valor inválido deveria usar o padrão, got %d", got)
+	}
+}

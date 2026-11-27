@@ -32,6 +32,34 @@
   {{else}}<span class="badge warn">ativo</span>{{end}}
 </div>
 
+<h2>Aparecer na rede</h2>
+<p>Assim outros aparelhos encontram a impressora sozinhos.</p>
+{{if .DiscoveryOn}}
+<div class="choice">
+  <div>
+    <strong>Ligado</strong>
+    <p>Padrão. A impressora aparece na rede.</p>
+  </div>
+  <form method="post" action="/discovery">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <input type="hidden" name="mode" value="off">
+    <button class="btn" type="submit">Desligar</button>
+  </form>
+</div>
+{{else}}
+<div class="choice">
+  <div>
+    <strong>Desligado</strong>
+    <p>Use só a configuração manual pelo endereço e porta 9100.</p>
+  </div>
+  <form method="post" action="/discovery">
+    <input type="hidden" name="_csrf" value="{{.CSRF}}">
+    <input type="hidden" name="mode" value="on">
+    <button class="btn primary" type="submit">Ligar</button>
+  </form>
+</div>
+{{end}}
+
 <h2>Token</h2>
 {{if .BridgeToken}}
 <p>Copie este valor para o sistema que imprime.</p>

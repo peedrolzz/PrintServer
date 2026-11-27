@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Liga ou desliga o anúncio automático da impressora na rede.
+# Sem o marcador a descoberta fica ligada, que é o padrão.
+set -euo pipefail
+umask 0077
+
+MARKER=/etc/printserver/discovery-off
+
+case "${1:-}" in
+    on)
+        rm -f "$MARKER"
+        ;;
+    off)
+        : > "$MARKER"
+        chmod 0644 "$MARKER"
+        ;;
+    *)
+        echo "uso: printserver-set-discovery on|off" >&2
+        exit 2
+        ;;
+esac
+
+# Reescreve ou remove o arquivo do avahi conforme o novo estado.
+/usr/bin/printserver-discover --no-restart >/dev/null 2>&1 || true

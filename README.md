@@ -65,11 +65,28 @@ durante a configuração.
 
 ### 3. Impressão na rede
 
-Configure no sistema que imprime o endereço `printserver-XXXX.local` (ou o IP
-da Pi, se o aparelho não resolver `.local`) e a porta `9100`, ou a porta
-mostrada no painel. No modo padrão, basta abrir a conexão e escrever os bytes
-do trabalho: o bridge repassa tudo para a impressora USB. Texto e comandos
-PCL funcionam na RICOH; comandos ESC/POS dependem da impressora conectada.
+Por padrão a impressora **aparece automaticamente na rede**: o serviço publica
+um anúncio mDNS `_pdl-datastream._tcp` com a porta de cada impressora ativa.
+Se quiser deixar só a configuração manual, abra o painel em **Impressão →
+Aparecer na rede → Desligar**. Para voltar a anunciar, toque em **Ligar**.
+Sem o marcador `discovery-off` a descoberta fica ligada, que é o padrão.
+
+Para imprimir um PDF da sua máquina, crie uma fila apontando para o endereço
+`printserver-XXXX.local` (ou o IP da Pi) e a porta `9100`, com um driver PCL.
+No Linux, por exemplo:
+
+```
+lpadmin -p PrintServer -E -v socket://172.16.113.82:9100 \
+  -m 'foomatic-db-compressed-ppds:0/ppd/foomatic-ppd/Generic-PCL_4_Printer-laserjet.ppd' \
+  -o PageSize=A4
+lpadmin -d PrintServer
+```
+
+Depois disso, abra o PDF e escolha **PrintServer** na opção de impressão, ou
+use `lp -d PrintServer arquivo.pdf`. O driver do sistema converte o documento
+inteiro para PCL; o bridge não converte nada, apenas escreve os bytes na
+impressora USB. Assim funcionam PDF, texto e qualquer formato que o driver
+saiba converter. Comandos ESC/POS dependem da impressora conectada.
 
 A impressora pode demorar alguns segundos para acordar. Trabalhos enviados
 nesse intervalo saem depois, geralmente juntos.
@@ -77,6 +94,8 @@ nesse intervalo saem depois, geralmente juntos.
 Qualquer máquina da rede pode imprimir no modo padrão. Cada endereço pode
 enviar até 60 trabalhos por minuto; para ajustar, defina
 `PRINTBRIDGE_MAX_PER_MIN` no ambiente do serviço `printserver-bridge`.
+O tamanho máximo de um trabalho é 64 MiB, ajustável por
+`PRINTBRIDGE_MAX_JOB` (teto de 256 MiB).
 
 Se o operador ativar o modo com token no painel, o cliente precisa enviar
 antes um handshake de 60 bytes: magic `CPJ1`, nonce, timestamp e

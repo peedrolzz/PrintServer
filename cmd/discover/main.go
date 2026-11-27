@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -18,15 +19,20 @@ import (
 )
 
 const (
-	defaultConfig = "/etc/printserver/printers.json"
-	portStart     = 9100
-	portEnd       = 9199
+	defaultConfig    = "/etc/printserver/printers.json"
+	defaultAvahiDir  = "/etc/avahi/services"
+	avahiFile        = "printserver.service"
+	defaultOffMarker = "/etc/printserver/discovery-off"
+	portStart        = 9100
+	portEnd          = 9199
 )
 
 var serialRE = regexp.MustCompile(`^[A-Za-z0-9_.\-]{1,150}$`)
 
 func main() {
 	cfgPath := flag.String("config", envOr("PRINTBOX_PRINTERS", defaultConfig), "printers.json path")
+	avahiDir := flag.String("avahi-dir", envOr("PRINTBOX_AVAHI_DIR", defaultAvahiDir), "avahi services directory")
+	offMarker := flag.String("discovery-off", envOr("PRINTBOX_DISCOVERY_OFF", defaultOffMarker), "marker that disables automatic discovery")
 	noRestart := flag.Bool("no-restart", false, "do not signal bridge to reload")
 	showVer := flag.Bool("version", false, "print version")
 	flag.Parse()
@@ -50,24 +56,100 @@ func main() {
 		os.Exit(1)
 	}
 	changed := mergeConfig(cfg, devices, log)
-	if !changed {
+	if changed {
+		if err := atomicSave(*cfgPath, cfg); err != nil {
+			log.Error("discover: save failed", "err", err)
+			os.Exit(1)
+		}
+		log.Info("discover: config updated",
+			slog.Int("printers", len(cfg.Printers)),
+		)
+	} else {
 		log.Info("discover: no changes")
-		return
 	}
 
-	if err := atomicSave(*cfgPath, cfg); err != nil {
-		log.Error("discover: save failed", "err", err)
-		os.Exit(1)
+	// Publicar mesmo sem mudança: o arquivo pode ter sido apagado ou a
+	// descoberta automática pode ter sido reativada desde o boot anterior.
+	if err := publishAvahi(cfg, *avahiDir, discoveryEnabled(*offMarker)); err != nil {
+		log.Warn("discover: publish avahi failed", "err", err)
 	}
-	log.Info("discover: config updated",
-		slog.Int("printers", len(cfg.Printers)),
-	)
 
-	if !*noRestart {
+	if changed && !*noRestart {
 		if err := signalReload(); err != nil {
 			log.Warn("discover: signal bridge failed", "err", err)
 		}
 	}
+}
+
+// discoveryEnabled devolve false somente quando o operador desligou a
+// descoberta automática no painel. Sem marcador, a impressora aparece na rede.
+func discoveryEnabled(marker string) bool {
+	_, err := os.Stat(marker)
+	return err != nil
+}
+
+// publishAvahi anuncia cada impressora ativa como uma impressora JetDirect na
+// porta TCP correspondente. Quando desligado, remove o anúncio do avahi para
+// que só a configuração manual continue funcionando.
+func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
+	path := filepath.Join(dir, avahiFile)
+	if !enabled {
+		err := os.Remove(path)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" standalone='no'?>\n")
+	b.WriteString("<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">\n")
+	b.WriteString("<service-group>\n")
+	b.WriteString("  <name>PrintServer</name>\n")
+	for _, p := range cfg.Printers {
+		if !p.Enabled {
+			continue
+		}
+		fmt.Fprintf(&b, "  <service>\n")
+		b.WriteString("    <type>_pdl-datastream._tcp</type>\n")
+		fmt.Fprintf(&b, "    <port>%d</port>\n", p.TCPPort)
+		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", "Impressora PrintServer")
+		fmt.Fprintf(&b, "    <txt-record>usb=MFG:%s;MDL:%s;DES:%s;CMD:PCL</txt-record>\n",
+			avahiText(p.Manufacturer), avahiText(p.Model), avahiText(p.Name))
+		b.WriteString("  </service>\n")
+	}
+	b.WriteString("</service-group>\n")
+
+	tmp := fmt.Sprintf("%s.tmp.%d", path, os.Getpid())
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// avahiText mantém os campos TXT em ASCII seguro, sem ';' que quebraria o
+// formato usb= e sem caracteres de controle.
+func avahiText(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 0x20 && r <= 0x7e && r != ';' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte(' ')
+		}
+	}
+	v := b.String()
+	if len(v) > 120 {
+		v = v[:120]
+	}
+	return html.EscapeString(v)
 }
 
 func envOr(k, def string) string {

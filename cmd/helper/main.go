@@ -59,6 +59,12 @@ var allowed = map[string][]string{
 	"bridge-auth": {
 		"/usr/local/sbin/printserver-set-bridge-mode", "auth",
 	},
+	"discovery-on": {
+		"/usr/local/sbin/printserver-set-discovery", "on",
+	},
+	"discovery-off": {
+		"/usr/local/sbin/printserver-set-discovery", "off",
+	},
 	"reboot": {
 		"/usr/bin/systemctl", "reboot",
 	},

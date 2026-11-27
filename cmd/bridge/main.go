@@ -28,9 +28,12 @@ const (
 	defaultTokenPath    = "/var/lib/printserver/credentials/bridge-token"
 	bridgeTokenModePath = "/etc/printserver/bridge-token-mode"
 	defaultBind         = "0.0.0.0"
-	maxJob              = 512 * 1024
-	jobTimeout          = 30 * time.Second
-	handshakeTimeout    = 5 * time.Second
+	// O WriteJob faz streaming direto para o dispositivo; um limite maior não
+	// aumenta o consumo de memória e permite documentos com imagens.
+	maxJob           = 64 << 20
+	maxJobCap        = 256 << 20
+	jobTimeout       = 30 * time.Second
+	handshakeTimeout = 5 * time.Second
 	// Um sistema de impressão pode enviar vários cupons em sequência. Dez por
 	// minuto derrubaria trabalhos reais, então o padrão é um por segundo.
 	maxPerIPPerMin    = 60
@@ -210,7 +213,7 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 		_ = conn.SetReadDeadline(time.Now().Add(jobTimeout))
 	}
 	start := time.Now()
-	n, err := dev.WriteJob(conn, maxJob, jobTimeout)
+	n, err := dev.WriteJob(conn, maxJobFromEnv(), jobTimeout)
 	ack := bridgeack.FromError(err)
 	if err != nil {
 		if errors.Is(err, printer.ErrBusy) {
@@ -264,6 +267,20 @@ func maxPerIPPerMinFromEnv() int {
 	}
 	if n > maxPerIPPerMinCap {
 		return maxPerIPPerMinCap
+	}
+	return n
+}
+
+// maxJobFromEnv permite ampliar ou reduzir o tamanho máximo de um trabalho
+// sem recompilar. O teto existe para evitar que uma única conexão ocupe a
+// impressora por tempo indefinido.
+func maxJobFromEnv() int64 {
+	n, err := strconv.ParseInt(envOr("PRINTBRIDGE_MAX_JOB", ""), 10, 64)
+	if err != nil || n <= 0 {
+		return maxJob
+	}
+	if n > maxJobCap {
+		return maxJobCap
 	}
 	return n
 }

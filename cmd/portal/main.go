@@ -52,6 +52,7 @@ const (
 	defaultCAStore       = "/var/lib/printserver/credentials/enterprise-ca"
 	defaultBridgeTok     = "/var/lib/printserver/credentials/bridge-token"
 	bridgeTokenModePath  = "/etc/printserver/bridge-token-mode"
+	discoveryOffPath     = "/etc/printserver/discovery-off"
 	defaultFirstRun      = "/var/lib/printserver/credentials/first-run.flag"
 	defaultListen        = "0.0.0.0:443"
 	maxRequestBody       = 16 * 1024
@@ -167,6 +168,7 @@ func main() {
 	authed.Handle("POST /wifi/hotspot", http.HandlerFunc(a.postWifiHotspot))
 	authed.Handle("GET /bridge", http.HandlerFunc(a.getBridge))
 	authed.Handle("POST /bridge", http.HandlerFunc(a.postBridge))
+	authed.Handle("POST /discovery", http.HandlerFunc(a.postDiscovery))
 	authed.Handle("POST /wifi/ca", http.HandlerFunc(a.postUploadCA))
 	authed.Handle("GET /test-print", http.HandlerFunc(a.getTestPrint))
 	authed.Handle("POST /test-print", http.HandlerFunc(a.postTestPrint))
@@ -381,6 +383,7 @@ type pageData struct {
 	ReturnHost     string
 	BridgeOpen     bool
 	BridgeToken    string
+	DiscoveryOn    bool
 	NearbyWifi     []wifiNetwork
 	ScannedAt      string
 }
@@ -678,6 +681,7 @@ func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
 		CSRF:          csrf,
 		BridgeOpen:    readBridgeOpen(),
 		BridgeToken:   a.readBridgeToken(),
+		DiscoveryOn:   readDiscoveryOn(),
 	})
 }
 
@@ -715,6 +719,56 @@ func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 		CSRF:          csrf,
 		BridgeOpen:    readBridgeOpen(),
 		BridgeToken:   a.readBridgeToken(),
+		DiscoveryOn:   readDiscoveryOn(),
+		Message:       msg,
+		Error:         errMsg,
+	})
+}
+
+// readDiscoveryOn devolve o estado do anúncio automático. Sem marcador a
+// impressora aparece na rede, que é o comportamento padrão.
+func readDiscoveryOn() bool {
+	_, err := os.Stat(discoveryOffPath)
+	return err != nil
+}
+
+func (a *app) postDiscovery(w http.ResponseWriter, r *http.Request) {
+	if err := auth.VerifyCSRF(r); err != nil {
+		a.csrfFail(w, r, r.URL.Path)
+		return
+	}
+	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+
+	mode := r.FormValue("mode")
+	var action, msg, errMsg string
+	switch mode {
+	case "on":
+		action = "discovery-on"
+		msg = "A impressora vai aparecer automaticamente na rede."
+	case "off":
+		action = "discovery-off"
+		msg = "Descoberta automática desligada. Configure a impressora pelo endereço e porta 9100."
+	default:
+		errMsg = "Opção inválida."
+	}
+	if errMsg == "" {
+		if _, err := helperclient.Send("", action); err != nil {
+			a.log.Warn("portal: discovery switch failed", "err", err)
+			errMsg = "Não foi possível alterar a descoberta agora."
+		}
+	}
+
+	csrf, _ := auth.IssueCSRF(w, r)
+	a.render(w, "bridge", pageData{
+		Title:         "Impressão",
+		Authenticated: true,
+		CSRF:          csrf,
+		BridgeOpen:    readBridgeOpen(),
+		BridgeToken:   a.readBridgeToken(),
+		DiscoveryOn:   readDiscoveryOn(),
 		Message:       msg,
 		Error:         errMsg,
 	})

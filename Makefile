@@ -45,6 +45,7 @@ deb: all
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/systemd/system
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/udev/rules.d
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/printserver
+	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/avahi/services
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/var/lib/printserver
 	install -m 0755 $(BIN_DIR)/printserver-bridge   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
 	install -m 0755 $(BIN_DIR)/printserver-portal   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
@@ -57,6 +58,7 @@ deb: all
 	install -m 0755 scripts/printserver-update-issue           $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-set-mode               $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-set-bridge-mode        $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
+	install -m 0755 scripts/printserver-set-discovery          $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-watchdog               $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-recovery               $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-wifi-scan              $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
