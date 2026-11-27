@@ -22,7 +22,8 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 - Um sistema centralizado. Cada unidade é independente.
 - Um produto com marca, etiquetas ou adesivos. É um serviço.
 - Um servidor de impressão completo. Não há fila, CUPS nem filtros: o
-  bridge apenas escreve os bytes recebidos em `/dev/usb/lp*`.
+  bridge apenas escreve os bytes recebidos em
+  `/dev/printserver/by-serial/<serial>`.
 
 ## Componentes
 
@@ -34,8 +35,9 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 | `printserver-helper` | Serviço root com socket Unix e lista fixa de ações permitidas, como reiniciar serviços e trocar o modo da impressão. |
 | `printserver-tool` | Pequenos comandos usados pelo primeiro boot. |
 
-Todos os outros processos rodam como o usuário sem privilégios
-`printserver`.
+Portal e bridge rodam como o usuário sem privilégios `printserver`.
+Helper, watchdog, descoberta USB e serviços de boot e rede rodam como `root`
+porque precisam mexer em systemd, rede e dispositivos.
 
 ## Como usar
 
@@ -64,16 +66,21 @@ Grave a imagem, ligue a Pi e aguarde o boot. No primeiro boot o equipamento:
 6. Ao conectar, o hotspot cai. Na mesma rede, abra
    `https://printserver-XXXX.local` para voltar ao painel.
 
-O endereço `printserver-XXXX.local` funciona tanto no hotspot quanto na rede
-final. O IP do hotspot existe apenas durante a configuração.
+O endereço `printserver-XXXX.local` funciona no hotspot e na rede final
+quando o aparelho resolve nomes `.local`. Se não resolver, use o IP atual da
+Pi, que aparece no diagnóstico do painel. O IP do hotspot existe apenas
+durante a configuração.
 
 ### 3. Impressão na rede
 
-Configure no sistema que imprime o endereço `printserver-XXXX.local` e a porta
-`9100` (ou a porta mostrada no painel). No modo padrão, basta abrir a conexão
-e escrever os bytes do trabalho: o bridge repassa tudo para a impressora USB.
-Texto e comandos PCL funcionam na RICOH; comandos ESC/POS dependem da
-impressora conectada.
+Configure no sistema que imprime o endereço `printserver-XXXX.local` (ou o IP
+da Pi, se o aparelho não resolver `.local`) e a porta `9100`, ou a porta
+mostrada no painel. No modo padrão, basta abrir a conexão e escrever os bytes
+do trabalho: o bridge repassa tudo para a impressora USB. Texto e comandos
+PCL funcionam na RICOH; comandos ESC/POS dependem da impressora conectada.
+
+A impressora pode demorar alguns segundos para acordar. Trabalhos enviados
+nesse intervalo saem depois, geralmente juntos.
 
 Qualquer máquina da rede pode imprimir no modo padrão. Cada endereço pode
 enviar até 60 trabalhos por minuto; para ajustar, defina
@@ -99,10 +106,10 @@ Se o acesso for perdido:
   na partição de boot e devolva o cartão à Pi. No próximo boot o
   equipamento volta ao hotspot. A senha do WiFi não é alterada: se ela foi
   trocada no painel, continue usando a senha escolhida.
-- O acesso de suporte é por SSH na ethernet, nunca pelo hotspot. A imagem
-  é selada sem chaves de acesso e sem login por senha: para entrar, adicione
-  sua chave pública em `/home/printer/.ssh/authorized_keys`. As chaves do
-  servidor SSH são geradas de novo no primeiro boot.
+- Não há SSH para o operador. Recupere o acesso pelo SD no computador ou pelo
+  próprio painel. O SSH na ethernet fica reservado para suporte técnico e
+  exige chave pública: a imagem é selada sem login por senha e sem chaves de
+  acesso. As chaves do servidor SSH são geradas de novo no primeiro boot.
 
 ## Instalação
 
@@ -119,7 +126,7 @@ projeto. O primeiro boot completa a configuração.
 
 ## Compilação
 
-Requisitos: Go 1.26 ou newer e `dpkg-deb`.
+Requisitos: Go 1.26 ou superior e `dpkg-deb`.
 
 ```
 make all        # binários arm64 em dist/bin/arm64
@@ -135,8 +142,9 @@ Controles implementados:
 - Senha por equipamento, com troca obrigatória no primeiro acesso.
 - Hash Argon2id da senha administrativa.
 - CSRF double-submit em todos os formulários.
-- Limite de 10 senhas erradas por minuto por IP no login, e limites nas
-  ações e no bridge.
+- Limite de 10 senhas erradas por minuto por IP no login, limite de ações no
+  painel e limite de 60 trabalhos por minuto por IP no bridge, ajustável com
+  `PRINTBRIDGE_MAX_PER_MIN`.
 - HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
   Permissions-Policy e sem cabeçalho `Server`.
 - Cookie de sessão `HttpOnly`, `Secure`, `SameSite=Strict`.
@@ -146,9 +154,10 @@ Controles implementados:
 - SSH bloqueado na interface do hotspot e limitado à ethernet.
 - Impressão aberta por padrão. O modo com token é opt-in e rejeita
   conexões sem o handshake HMAC correto.
-- Serviços persistentes rodando como `printserver`, com
-  `ProtectSystem=strict`, `NoNewPrivileges` e capacidades mínimas. O
-  primeiro boot roda como root e não recebe esse endurecimento.
+- Portal e bridge rodando como `printserver`, com `ProtectSystem=strict`,
+  `NoNewPrivileges` e capacidades mínimas. Helper, watchdog, descoberta USB e
+  serviços de boot e rede rodam como `root` com escopo limitado; o primeiro
+  boot não recebe esse endurecimento.
 - O helper root usa lista fixa de comandos, sem shell e com socket restrito
   ao grupo `printserver`.
 - No primeiro boot as chaves SSH da imagem são descartadas e geradas de novo;
