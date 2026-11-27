@@ -30,15 +30,19 @@ const (
 	defaultBind         = "0.0.0.0"
 	// O WriteJob faz streaming direto para o dispositivo; um limite maior não
 	// aumenta o consumo de memória e permite documentos com imagens.
-	maxJob           = 64 << 20
-	maxJobCap        = 256 << 20
-	jobTimeout       = 30 * time.Second
+	maxJob    = 64 << 20
+	maxJobCap = 256 << 20
+	// O CUPS pode levar alguns segundos compondo o PCL de um PDF grande.
+	// Dois minutos também cobrem escritas USB lentas sem travar a fila.
+	jobTimeout       = 2 * time.Minute
 	handshakeTimeout = 5 * time.Second
 	// Um sistema de impressão pode enviar vários cupons em sequência. Dez por
 	// minuto derrubaria trabalhos reais, então o padrão é um por segundo.
 	maxPerIPPerMin    = 60
 	maxPerIPPerMinCap = 600
 	maxAckDetail      = 160
+	// Espera máxima na fila antes de responder que a impressora está ocupada.
+	queueWait = 2 * time.Minute
 )
 
 // bridgeTokenModeEnabled é verdadeiro somente quando o operador ativou
@@ -149,7 +153,10 @@ func startListeners(log *slog.Logger, bind string, cfg *config.Printers, token [
 			slog.Int("port", pr.TCPPort),
 			logger.HashedSerial(pr.SerialNumber),
 		)
-		go serve(log, ln, dev, pr, token, requireToken, rl)
+		// Um lugar na fila: quem chega junto espera, nada é copiado para
+		// memória. O próprio WriteJob lê da conexão e escreve na USB.
+		slots := make(chan struct{}, 1)
+		go serve(log, ln, dev, slots, pr, token, requireToken, rl)
 	}
 	return out
 }
@@ -160,24 +167,27 @@ func closeAll(ls []net.Listener) {
 	}
 }
 
-func serve(log *slog.Logger, ln net.Listener, dev *printer.Device, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
+func serve(log *slog.Logger, ln net.Listener, dev *printer.Device, slots chan struct{}, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		go handle(log, conn, dev, p, token, requireToken, rl)
+		go handle(log, conn, dev, slots, p, token, requireToken, rl)
 	}
 }
 
-func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
+func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, slots chan struct{}, p config.Printer, token []byte, requireToken bool, rl *auth.Limiter) {
 	defer conn.Close()
 	host := auth.PeerKey(conn.RemoteAddr())
 	if !rl.Allow(host) {
 		log.Warn("bridge: rate limit", logger.ClientCIDR(conn.RemoteAddr()))
 		return
 	}
-	if !requireToken {
+	// A fila CUPS mora na própria Pi e fala por 127.0.0.1. Ela não precisa
+	// do segredo: o token protege quem chega pela rede, não o serviço local.
+	needToken := requireToken && !isLoopbackAddr(conn.RemoteAddr())
+	if !needToken {
 		_ = conn.SetReadDeadline(time.Now().Add(jobTimeout))
 	} else {
 		_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
@@ -212,8 +222,27 @@ func handle(log *slog.Logger, conn net.Conn, dev *printer.Device, p config.Print
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(jobTimeout))
 	}
+	// A fila é este semaphore: só um trabalho por vez usa a USB. Enquanto
+	// espera, a conexão fica aberta e nenhum byte é copiado para memória.
+	select {
+	case slots <- struct{}{}:
+		defer func() { <-slots }()
+	case <-time.After(queueWait):
+		log.Warn("bridge: queue full",
+			slog.String("printer", p.Name),
+			logger.ClientCIDR(conn.RemoteAddr()),
+		)
+		_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		_, _ = conn.Write([]byte{bridgeack.FromError(printer.ErrBusy)})
+		return
+	}
+
 	start := time.Now()
-	n, err := dev.WriteJob(conn, maxJobFromEnv(), jobTimeout)
+	limite := maxJobFromEnv()
+	n, err := dev.WriteJob(conn, limite+1, jobTimeout)
+	if n > limite {
+		err = errors.New("trabalho maior que o limite")
+	}
 	ack := bridgeack.FromError(err)
 	if err != nil {
 		if errors.Is(err, printer.ErrBusy) {
@@ -290,4 +319,16 @@ func trimEOL(b []byte) []byte {
 		b = b[:len(b)-1]
 	}
 	return b
+}
+
+func isLoopbackAddr(addr net.Addr) bool {
+	if addr == nil {
+		return false
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

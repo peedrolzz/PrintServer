@@ -21,7 +21,15 @@ systemctl mask hostapd.service    2>/dev/null || true
 systemctl mask dnsmasq.service    2>/dev/null || true
 
 systemctl daemon-reload || true
+
+# O CUPS faz a conversão do PDF na Pi. O bridge continua sendo o único
+# processo que escreve na USB; a fila aponta para 127.0.0.1:9100.
+systemctl enable cups.service 2>/dev/null || true
+systemctl start cups.service 2>/dev/null || true
+/usr/bin/printserver-tool cups-sync >/dev/null 2>&1 || true
+
 for u in \
+    cups.service \
     printserver-helper.service \
     printserver-firstboot.service \
     printserver-hostname.service \

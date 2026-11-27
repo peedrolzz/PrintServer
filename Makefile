@@ -46,6 +46,7 @@ deb: all
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/udev/rules.d
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/printserver
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/avahi/services
+	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/share/ppd/printserver
 	@mkdir -p $(PKG_DIR)/printserver_$(VERSION)_arm64/var/lib/printserver
 	install -m 0755 $(BIN_DIR)/printserver-bridge   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
 	install -m 0755 $(BIN_DIR)/printserver-portal   $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/bin/
@@ -64,6 +65,7 @@ deb: all
 	install -m 0755 scripts/printserver-wifi-scan              $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-hostname               $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
 	install -m 0755 scripts/printserver-wifi-profile           $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/local/sbin/
+	install -m 0644 ppd/*.ppd                                 $(PKG_DIR)/printserver_$(VERSION)_arm64/usr/share/ppd/printserver/
 	install -m 0644 systemd/printserver-bridge.service    $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/systemd/system/
 	install -m 0644 systemd/printserver-portal.service    $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/systemd/system/
 	install -m 0644 systemd/printserver-discover.service  $(PKG_DIR)/printserver_$(VERSION)_arm64/etc/systemd/system/
@@ -96,7 +98,7 @@ deb: all
 	echo "Priority: optional"               >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
 	echo "Architecture: arm64"              >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
 	echo "Maintainer: PrintServer <printserver@example.org>" >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
-	echo "Depends: systemd, network-manager, hostapd, dnsmasq, avahi-daemon, openssl, rfkill, iproute2, iw" >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
+	echo "Depends: systemd, network-manager, hostapd, dnsmasq, avahi-daemon, openssl, rfkill, iproute2, iw, cups, cups-filters, ghostscript, printer-driver-sag-gdi" >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
 	echo "Description: PrintServer, provisional USB print service for Raspberry Pi 3" >> $(PKG_DIR)/printserver_$(VERSION)_arm64/DEBIAN/control
 	dpkg-deb --build --root-owner-group $(PKG_DIR)/printserver_$(VERSION)_arm64
 

@@ -16,6 +16,7 @@ import (
 	"github.com/printserver/printserver/pkg/config"
 	"github.com/printserver/printserver/pkg/helperclient"
 	"github.com/printserver/printserver/pkg/logger"
+	"github.com/printserver/printserver/pkg/printprofile"
 )
 
 const (
@@ -74,6 +75,12 @@ func main() {
 		log.Warn("discover: publish avahi failed", "err", err)
 	}
 
+	// A fila CUPS vive na Pi. Sincronizar em toda execução também recupera
+	// filas apagadas por uma atualização ou por uma queda de energia.
+	if err := syncPrintQueues(); err != nil {
+		log.Warn("discover: cups sync failed", "err", err)
+	}
+
 	if changed && !*noRestart {
 		if err := signalReload(); err != nil {
 			log.Warn("discover: signal bridge failed", "err", err)
@@ -88,9 +95,10 @@ func discoveryEnabled(marker string) bool {
 	return err != nil
 }
 
-// publishAvahi anuncia cada impressora ativa como uma impressora JetDirect na
-// porta TCP correspondente. Quando desligado, remove o anúncio do avahi para
-// que só a configuração manual continue funcionando.
+// publishAvahi anuncia cada impressora ativa de duas formas: a porta 9100
+// legada, para quem já envia trabalhos crus, e a fila IPP do CUPS, para quem
+// quer imprimir um PDF sem instalar driver. Quando desligado, remove os
+// anúncios para que só a configuração manual continue funcionando.
 func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 	path := filepath.Join(dir, avahiFile)
 	if !enabled {
@@ -113,12 +121,27 @@ func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 		if !p.Enabled {
 			continue
 		}
+		queue := printprofile.QueueName(p.SerialNumber)
+		usb := fmt.Sprintf("MFG:%s;MDL:%s;DES:%s;CMD:PCL",
+			avahiText(p.Manufacturer), avahiText(p.Model), avahiText(p.Name))
+
 		fmt.Fprintf(&b, "  <service>\n")
+		fmt.Fprintf(&b, "    <name>%s</name>\n", avahiText(queue))
 		b.WriteString("    <type>_pdl-datastream._tcp</type>\n")
 		fmt.Fprintf(&b, "    <port>%d</port>\n", p.TCPPort)
-		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", "Impressora PrintServer")
-		fmt.Fprintf(&b, "    <txt-record>usb=MFG:%s;MDL:%s;DES:%s;CMD:PCL</txt-record>\n",
-			avahiText(p.Manufacturer), avahiText(p.Model), avahiText(p.Name))
+		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", avahiText(p.Name))
+		fmt.Fprintf(&b, "    <txt-record>usb=%s</txt-record>\n", usb)
+		b.WriteString("  </service>\n")
+
+		fmt.Fprintf(&b, "  <service>\n")
+		fmt.Fprintf(&b, "    <name>%s IPP</name>\n", avahiText(queue))
+		b.WriteString("    <type>_ipp._tcp</type>\n")
+		b.WriteString("    <port>631</port>\n")
+		fmt.Fprintf(&b, "    <txt-record>rp=printers/%s</txt-record>\n", queue)
+		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", avahiText(p.Name))
+		b.WriteString("    <txt-record>pdl=application/pdf,application/vnd.cups-raster</txt-record>\n")
+		fmt.Fprintf(&b, "    <txt-record>usb=%s</txt-record>\n", usb)
+		b.WriteString("    <txt-record>priority=50</txt-record>\n")
 		b.WriteString("  </service>\n")
 	}
 	b.WriteString("</service-group>\n")
@@ -275,6 +298,7 @@ func mergeConfig(cfg *config.Printers, devs []usbDevice, log *slog.Logger) bool 
 			DevicePath:   d.DevicePath,
 			TCPPort:      port,
 			Enabled:      true,
+			Profile:      printprofile.Choose(d.Manufacturer, d.Model, d.USBID),
 		})
 		changed = true
 	}
@@ -336,6 +360,11 @@ func atomicSave(path string, cfg *config.Printers) error {
 
 func signalReload() error {
 	_, err := helperclient.Send("", "reload-bridge-config")
+	return err
+}
+
+func syncPrintQueues() error {
+	_, err := helperclient.Send("", "cups-sync")
 	return err
 }
 

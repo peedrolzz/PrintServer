@@ -59,6 +59,12 @@ var allowed = map[string][]string{
 	"bridge-auth": {
 		"/usr/local/sbin/printserver-set-bridge-mode", "auth",
 	},
+	"cups-sync": {
+		"/usr/bin/printserver-tool", "cups-sync",
+	},
+	"print-profile": {
+		"/usr/bin/printserver-tool", "set-print-profile",
+	},
 	"discovery-on": {
 		"/usr/local/sbin/printserver-set-discovery", "on",
 	},
@@ -86,6 +92,7 @@ var allowedArgs = map[string]int{
 	"wifi-profile-open":       2,
 	"wifi-profile-personal":   3,
 	"wifi-profile-enterprise": 6,
+	"print-profile":           2,
 }
 
 func main() {

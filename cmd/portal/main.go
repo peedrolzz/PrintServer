@@ -35,6 +35,7 @@ import (
 	"github.com/printserver/printserver/pkg/device"
 	"github.com/printserver/printserver/pkg/helperclient"
 	"github.com/printserver/printserver/pkg/logger"
+	"github.com/printserver/printserver/pkg/printprofile"
 	"github.com/printserver/printserver/pkg/validate"
 )
 
@@ -169,6 +170,7 @@ func main() {
 	authed.Handle("GET /bridge", http.HandlerFunc(a.getBridge))
 	authed.Handle("POST /bridge", http.HandlerFunc(a.postBridge))
 	authed.Handle("POST /discovery", http.HandlerFunc(a.postDiscovery))
+	authed.Handle("POST /print-profile", http.HandlerFunc(a.postPrintProfile))
 	authed.Handle("POST /wifi/ca", http.HandlerFunc(a.postUploadCA))
 	authed.Handle("GET /test-print", http.HandlerFunc(a.getTestPrint))
 	authed.Handle("POST /test-print", http.HandlerFunc(a.postTestPrint))
@@ -377,6 +379,7 @@ type pageData struct {
 	NearbyNetworks []string
 	NetStatus      netStatus
 	Printers       []config.Printer
+	Profiles       []printprofile.Option
 	Checks         []diagCheck
 	Mode           string
 	Hostname       string
@@ -674,14 +677,34 @@ func (a *app) readBridgeToken() string {
 }
 
 func (a *app) getBridge(w http.ResponseWriter, r *http.Request) {
+	a.renderBridgePage(w, r, "", "")
+}
+
+// renderBridgePage monta a página de impressão com a lista de impressoras e
+// os perfis de driver disponíveis. O operador pode trocar o filtro aqui,
+// sem instalar nada na máquina que envia o PDF.
+func (a *app) renderBridgePage(w http.ResponseWriter, r *http.Request, msg, errMsg string) {
 	csrf, _ := auth.IssueCSRF(w, r)
+	cfg, _ := config.LoadPrinters(filepath.Join(a.configDir, "printers.json"))
+	var ps []config.Printer
+	if cfg != nil {
+		for _, p := range cfg.Printers {
+			if p.Enabled {
+				ps = append(ps, p)
+			}
+		}
+	}
 	a.render(w, "bridge", pageData{
-		Title:         "Modo da impressão",
+		Title:         "Impressão",
 		Authenticated: true,
 		CSRF:          csrf,
 		BridgeOpen:    readBridgeOpen(),
 		BridgeToken:   a.readBridgeToken(),
 		DiscoveryOn:   readDiscoveryOn(),
+		Printers:      ps,
+		Profiles:      printprofile.Options(),
+		Message:       msg,
+		Error:         errMsg,
 	})
 }
 
@@ -712,17 +735,7 @@ func (a *app) postBridge(w http.ResponseWriter, r *http.Request) {
 			errMsg = "Não foi possível alterar o modo agora."
 		}
 	}
-	csrf, _ := auth.IssueCSRF(w, r)
-	a.render(w, "bridge", pageData{
-		Title:         "Modo da impressão",
-		Authenticated: true,
-		CSRF:          csrf,
-		BridgeOpen:    readBridgeOpen(),
-		BridgeToken:   a.readBridgeToken(),
-		DiscoveryOn:   readDiscoveryOn(),
-		Message:       msg,
-		Error:         errMsg,
-	})
+	a.renderBridgePage(w, r, msg, errMsg)
 }
 
 // readDiscoveryOn devolve o estado do anúncio automático. Sem marcador a
@@ -761,17 +774,37 @@ func (a *app) postDiscovery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	csrf, _ := auth.IssueCSRF(w, r)
-	a.render(w, "bridge", pageData{
-		Title:         "Impressão",
-		Authenticated: true,
-		CSRF:          csrf,
-		BridgeOpen:    readBridgeOpen(),
-		BridgeToken:   a.readBridgeToken(),
-		DiscoveryOn:   readDiscoveryOn(),
-		Message:       msg,
-		Error:         errMsg,
-	})
+	a.renderBridgePage(w, r, msg, errMsg)
+}
+
+// postPrintProfile troca o filtro usado por uma impressora. A escolha fica em
+// printers.json e é aplicada nas filas CUPS na hora.
+func (a *app) postPrintProfile(w http.ResponseWriter, r *http.Request) {
+	if err := auth.VerifyCSRF(r); err != nil {
+		a.csrfFail(w, r, r.URL.Path)
+		return
+	}
+	if !a.actionsLimit.Allow(auth.HTTPKey(r)) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+
+	serial := r.FormValue("serial")
+	profile := r.FormValue("profile")
+	if !printprofile.Valid(profile) {
+		a.renderBridgePage(w, r, "", "Driver inválido.")
+		return
+	}
+	if serial == "" || len(serial) > 150 || strings.ContainsAny(serial, "/\\\r\n") {
+		a.renderBridgePage(w, r, "", "Impressora não encontrada.")
+		return
+	}
+	if _, err := helperclient.Send("", "print-profile", serial, profile); err != nil {
+		a.log.Warn("portal: print profile failed", "err", err)
+		a.renderBridgePage(w, r, "", "Não foi possível salvar o driver agora.")
+		return
+	}
+	http.Redirect(w, r, "/bridge", http.StatusSeeOther)
 }
 
 func (a *app) wifiError(w http.ResponseWriter, r *http.Request, msg string) {

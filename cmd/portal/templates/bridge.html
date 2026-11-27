@@ -32,6 +32,31 @@
   {{else}}<span class="badge warn">ativo</span>{{end}}
 </div>
 
+<h2>Driver da impressora</h2>
+<p>O PDF é convertido aqui na Pi. Se a impressora não responder, troque o driver.</p>
+{{if not .Printers}}
+<p>Nenhuma impressora USB.</p>
+{{else}}
+<ul class="list">
+  {{range .Printers}}
+  {{$printer := .}}
+  <li>
+    <form method="post" action="/print-profile" class="action-row">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="serial" value="{{.SerialNumber}}">
+      <span>{{.Name}}<br><span class="hint">http://printserver-{{$.ShortID}}.local:631/printers/{{.QueueName}}</span></span>
+      <select name="profile">
+        {{range $.Profiles}}
+        <option value="{{.Name}}"{{if eq .Name $printer.Profile}} selected{{end}}>{{.Label}}</option>
+        {{end}}
+      </select>
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
 <h2>Aparecer na rede</h2>
 <p>Assim outros aparelhos encontram a impressora sozinhos.</p>
 {{if .DiscoveryOn}}

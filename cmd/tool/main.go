@@ -55,6 +55,17 @@ func main() {
 		if err := fingerprint(os.Args[2]); err != nil {
 			die(err)
 		}
+	case "cups-sync":
+		if err := cupsSync(); err != nil {
+			die(err)
+		}
+	case "set-print-profile":
+		if len(os.Args) != 4 {
+			die(fmt.Errorf("usage: set-print-profile SERIAL PROFILE"))
+		}
+		if err := setPrintProfile(os.Args[2], os.Args[3]); err != nil {
+			die(err)
+		}
 	default:
 		usage()
 		os.Exit(2)
@@ -68,6 +79,8 @@ func usage() {
   hash-password               Read password from stdin, print argon2id hash
   gen-hotspot-password        Print an 8-char hotspot password
   fingerprint-sha256 FILE     Print sha256 of a PEM cert
+  cups-sync                   Ajusta as filas CUPS as impressoras da Pi
+  set-print-profile SERIAL P  Salva o filtro de uma impressora e ajusta a fila
 `)
 }
 

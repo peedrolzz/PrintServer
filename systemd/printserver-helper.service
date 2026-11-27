@@ -1,6 +1,7 @@
 [Unit]
 Description=PrintServer privileged action helper
-After=local-fs.target
+After=local-fs.target cups.service
+Wants=cups.service
 Before=printserver-portal.service
 StartLimitIntervalSec=0
 
@@ -20,7 +21,7 @@ CapabilityBoundingSet=CAP_SYS_BOOT CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_CHOW
 AmbientCapabilities=
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/printserver /etc/NetworkManager /etc/printserver /etc/avahi/services
+ReadWritePaths=/run/printserver /etc/NetworkManager /etc/printserver /etc/avahi/services /etc/cups /var/cache/cups /var/spool/cups /run/cups
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

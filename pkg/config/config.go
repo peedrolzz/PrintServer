@@ -8,6 +8,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/printserver/printserver/pkg/printprofile"
 )
 
 type Manager struct {
@@ -62,6 +64,13 @@ type Printer struct {
 	DevicePath   string `json:"device_path"`
 	TCPPort      int    `json:"tcp_port"`
 	Enabled      bool   `json:"enabled"`
+	// Profile é o filtro usado pelo CUPS. Vazio significa escolha automática.
+	Profile string `json:"profile,omitempty"`
+}
+
+// QueueName é o nome da fila CUPS dessa impressora na Pi.
+func (p Printer) QueueName() string {
+	return printprofile.QueueName(p.SerialNumber)
 }
 
 type Printers struct {
@@ -115,7 +124,10 @@ func (p *Printers) Validate() error {
 		if strings.TrimSpace(pr.Name) == "" {
 			return fmt.Errorf("printers[%d]: name required", i)
 		}
-		for _, s := range []string{pr.Name, pr.Manufacturer, pr.Model, pr.USBID} {
+		if pr.Profile != "" && !printprofile.Valid(pr.Profile) {
+			return fmt.Errorf("printers[%d]: invalid profile %q", i, pr.Profile)
+		}
+		for _, s := range []string{pr.Name, pr.Manufacturer, pr.Model, pr.USBID, pr.Profile} {
 			if strings.ContainsRune(s, 0) {
 				return fmt.Errorf("printers[%d]: null byte in string", i)
 			}

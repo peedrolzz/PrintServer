@@ -6,9 +6,10 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 
 ## O que faz
 
-- Publica as impressoras USB conectadas na Pi nas portas TCP `9100`-`9199`.
-  Por padrão, qualquer máquina da mesma rede pode imprimir, como em uma
-  impressora comum. O modo com token é opcional.
+- Publica as impressoras USB conectadas na Pi por IPP e nas portas TCP
+  `9100`-`9199`. O PDF é convertido na Pi; a máquina do usuário só envia o
+  arquivo. Por padrão, qualquer máquina da mesma rede pode imprimir. O modo
+  com token é opcional.
 - Serve um painel HTTPS simples para configuração. A senha inicial é
   `printserver` e deve ser trocada no primeiro acesso.
 - Sobe um hotspot WiFi chamado `PrintServer-XXXX` para configurar o
@@ -23,9 +24,9 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 |---|---|
 | `printserver-portal` | Painel HTTPS na porta 443, com ajudante HTTP na 80 para o portal cativo. Faz login, WiFi, teste de impressão, senhas, diagnóstico e reinício. |
 | `printserver-bridge` | TCP 9100-9199. Por padrão escreve direto em `/dev/printserver/by-serial/<serial>`; se o modo com token estiver ativo, exige um handshake HMAC antes de aceitar dados. |
-| `printserver-discover` | Serviço pontual acionado pela udev quando uma impressora USB é conectada. Atualiza `printers.json`. |
+| `printserver-discover` | Serviço pontual acionado pela udev quando uma impressora USB é conectada. Atualiza `printers.json`, cria a fila CUPS e publica os anúncios na rede. |
 | `printserver-helper` | Serviço root com socket Unix e lista fixa de ações permitidas, como reiniciar serviços e trocar o modo da impressão. |
-| `printserver-tool` | Pequenos comandos usados pelo primeiro boot. |
+| `printserver-tool` | Comandos do primeiro boot e `cups-sync`, que ajusta as filas CUPS conforme as impressoras conectadas. |
 
 Portal e bridge rodam como o usuário sem privilégios `printserver`.
 Helper, watchdog, descoberta USB e serviços de boot e rede rodam como `root`
@@ -71,25 +72,44 @@ Se quiser deixar só a configuração manual, abra o painel em **Impressão →
 Aparecer na rede → Desligar**. Para voltar a anunciar, toque em **Ligar**.
 Sem o marcador `discovery-off` a descoberta fica ligada, que é o padrão.
 
-Para imprimir um PDF da sua máquina, crie uma fila apontando para o endereço
-`printserver-XXXX.local` (ou o IP da Pi) e a porta `9100`, com um driver PCL.
-No Linux, por exemplo:
+O PDF é convertido na própria Pi. Não é preciso instalar driver, criar fila
+local nem converter o arquivo no computador. A Pi publica cada impressora por
+IPP (`_ipp._tcp`) e mantém a porta `9100` para quem já envia trabalhos crus.
 
-```
-lpadmin -p PrintServer -E -v socket://172.16.113.82:9100 \
-  -m 'foomatic-db-compressed-ppds:0/ppd/foomatic-ppd/Generic-PCL_4_Printer-laserjet.ppd' \
-  -o PageSize=A4
-lpadmin -d PrintServer
-```
+Para imprimir:
 
-Depois disso, abra o PDF e escolha **PrintServer** na opção de impressão, ou
-use `lp -d PrintServer arquivo.pdf`. O driver do sistema converte o documento
-inteiro para PCL; o bridge não converte nada, apenas escreve os bytes na
-impressora USB. Assim funcionam PDF, texto e qualquer formato que o driver
-saiba converter. Comandos ESC/POS dependem da impressora conectada.
+1. Na máquina que tem o PDF, escolha adicionar impressora por IPP. O endereço
+   de cada fila aparece no painel, em **Impressão → Driver da impressora**,
+   no formato `http://printserver-XXXX.local:631/printers/ps-<serial>`.
+2. Abra o PDF e escolha essa impressora. O computador envia só o PDF.
+
+O CUPS da Pi transforma o PDF na linguagem da impressora e entrega o trabalho
+ao bridge em `127.0.0.1:9100`. O bridge continua sendo o único processo que
+escreve na USB. A conversão acontece no aparelho, então qualquer sistema que
+saiba imprimir por IPP funciona, sem download e sem configuração de driver.
+
+A escolha do filtro é automática, a partir da identificação USB da impressora:
+
+| Perfil | Filtro | Quando Costuma Aplicar |
+|---|---|---|
+| PCL | `rastertohp` | Padrão. Ricoh, HP, Kyocera, Lexmark, Brother, Canon e a maioria dos laserjets. |
+| PCL XL | `rastertopclx` | Impressoras que só aceitam PCL 6. |
+| PostScript | `rastertops` | Impressoras com PostScript. |
+| ESC/P | `rastertoepson` | Epson e compatíveis. |
+| GDI | `rastertosag-gdi` | Samsung GDI. |
+
+Se a escolha automática não funcionar, abra **Impressão → Driver da
+impressora**, troque o perfil e toque em **Salvar**. A fila é recriada na hora.
+Nada muda no computador que envia o PDF.
 
 A impressora pode demorar alguns segundos para acordar. Trabalhos enviados
 nesse intervalo saem depois, geralmente juntos.
+
+O modo com token protege a porta `9100` contra máquinas da rede. A fila CUPS
+na própria Pi fica isenta, então o IPP continua funcionando mesmo com o token
+ativo. As filas IPP continuam abertas para que qualquer máquina da rede possa
+imprimir sem configurar segredo; se quiser fechar isso, desligue a descoberta
+automática no painel e use apenas a configuração manual.
 
 Qualquer máquina da rede pode imprimir no modo padrão. Cada endereço pode
 enviar até 60 trabalhos por minuto; para ajustar, defina
@@ -189,6 +209,7 @@ pkg/              código reutilizável
 scripts/          primeiro boot, rede, WiFi, watchdog, recuperação, auditoria
 systemd/          serviços e timers
 config/           regras padrão de nftables
+ppd/              perfis de driver instalados no CUPS da Pi
 udev/             regras para impressoras USB
 ```
 

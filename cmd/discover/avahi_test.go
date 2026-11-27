@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,27 @@ func TestPublishAvahi(t *testing.T) {
 	}
 	if strings.Contains(got, "<port>9101</port>") {
 		t.Fatalf("impressora desativada foi anunciada: %s", got)
+	}
+	if !strings.Contains(got, "_ipp._tcp") {
+		t.Fatalf("serviço IPP ausente: %s", got)
+	}
+	if !strings.Contains(got, "<port>631</port>") {
+		t.Fatalf("porta IPP ausente: %s", got)
+	}
+	if !strings.Contains(got, "rp=printers/printserver") {
+		t.Fatalf("fila IPP ausente: %s", got)
+	}
+	var doc struct {
+		XMLName  xml.Name `xml:"service-group"`
+		Services []struct {
+			Type string `xml:"type"`
+		} `xml:"service"`
+	}
+	if err := xml.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("XML do avahi inválido: %v", err)
+	}
+	if len(doc.Services) != 2 {
+		t.Fatalf("esperados 2 serviços, vieram %d", len(doc.Services))
 	}
 }
 

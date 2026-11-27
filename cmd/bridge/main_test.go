@@ -48,7 +48,8 @@ func TestHandleModoAbertoEncaminhaJob(t *testing.T) {
 		TCPPort:      9100,
 		Enabled:      true,
 	}
-	dev := printer.New(devPath, 4)
+	dev := printer.New(devPath, 1)
+	slots := make(chan struct{}, 1)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	limiter := auth.NewLimiter(time.Minute, maxPerIPPerMin)
 
@@ -59,7 +60,7 @@ func TestHandleModoAbertoEncaminhaJob(t *testing.T) {
 		if err != nil {
 			return
 		}
-		handle(log, conn, dev, p, nil, false, limiter)
+		handle(log, conn, dev, slots, p, nil, false, limiter)
 	}()
 
 	client, err := net.Dial("tcp", ln.Addr().String())
@@ -131,5 +132,14 @@ func TestMaxJobFromEnv(t *testing.T) {
 	t.Setenv("PRINTBRIDGE_MAX_JOB", "invalid")
 	if got := maxJobFromEnv(); got != maxJob {
 		t.Fatalf("valor inválido deveria usar o padrão, got %d", got)
+	}
+}
+
+func TestIsLoopbackAddr(t *testing.T) {
+	if !isLoopbackAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9100}) {
+		t.Fatal("127.0.0.1 deve ser loopback")
+	}
+	if isLoopbackAddr(&net.TCPAddr{IP: net.ParseIP("172.16.113.81"), Port: 9100}) {
+		t.Fatal("IP da rede não pode ser loopback")
 	}
 }
