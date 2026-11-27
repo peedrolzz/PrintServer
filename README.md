@@ -17,14 +17,6 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 - Mostra no painel o estado da rede, da USB e da impressão, além de ações
   de manutenção e teste de impressão.
 
-## O que não é
-
-- Um sistema centralizado. Cada unidade é independente.
-- Um produto com marca, etiquetas ou adesivos. É um serviço.
-- Um servidor de impressão completo. Não há fila, CUPS nem filtros: o
-  bridge apenas escreve os bytes recebidos em
-  `/dev/printserver/by-serial/<serial>`.
-
 ## Componentes
 
 | Binário | Função |
