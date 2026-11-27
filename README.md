@@ -7,9 +7,10 @@ sem aplicativo, sem portal de fornecedor e sem dependências externas.
 ## O que faz
 
 - Publica as impressoras USB conectadas na Pi por IPP e nas portas TCP
-  `9100`-`9199`. O PDF é convertido na Pi; a máquina do usuário só envia o
-  arquivo. Por padrão, qualquer máquina da mesma rede pode imprimir. O modo
-  com token é opcional.
+  `9100`-`9199`. Na rede, a fila de PDF aparece como **PrintServer** e a porta
+  legada como **PrintServer USB**. O PDF é convertido na Pi; a máquina do
+  usuário só envia o arquivo. Por padrão, qualquer máquina da mesma rede pode
+  imprimir. O modo com token é opcional.
 - Serve um painel HTTPS simples para configuração. A senha inicial é
   `printserver` e deve ser trocada no primeiro acesso.
 - Sobe um hotspot WiFi chamado `PrintServer-XXXX` para configurar o
@@ -78,10 +79,13 @@ IPP (`_ipp._tcp`) e mantém a porta `9100` para quem já envia trabalhos crus.
 
 Para imprimir:
 
-1. Na máquina que tem o PDF, escolha adicionar impressora por IPP. O endereço
-   de cada fila aparece no painel, em **Impressão → Driver da impressora**,
-   no formato `http://printserver-XXXX.local:631/printers/ps-<serial>`.
-2. Abra o PDF e escolha essa impressora. O computador envia só o PDF.
+1. Na lista de impressoras da rede, escolha **PrintServer**. Essa é a fila
+   IPP. Não escolha **PrintServer USB**: essa é a porta `9100` legada e espera
+   dados já convertidos, não um PDF.
+2. Se preferir adicionar pelo endereço, ele aparece no painel em **Impressão →
+   Driver da impressora**, no formato
+   `http://printserver-XXXX.local:631/printers/ps-<serial>`.
+3. Abra o PDF e escolha **PrintServer**. O computador envia só o PDF.
 
 O CUPS da Pi transforma o PDF na linguagem da impressora e entrega o trabalho
 ao bridge em `127.0.0.1:9100`. O bridge continua sendo o único processo que
@@ -101,6 +105,10 @@ A escolha do filtro é automática, a partir da identificação USB da impressor
 Se a escolha automática não funcionar, abra **Impressão → Driver da
 impressora**, troque o perfil e toque em **Salvar**. A fila é recriada na hora.
 Nada muda no computador que envia o PDF.
+
+Os perfis cobrem a maioria dos laserjets. A validação no papel foi feita com
+uma Ricoh SP 310 no perfil PCL; os demais filtros geraram saída nos testes
+locais e podem precisar de ajuste em modelos específicos.
 
 A impressora pode demorar alguns segundos para acordar. Trabalhos enviados
 nesse intervalo saem depois, geralmente juntos.
