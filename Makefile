@@ -16,6 +16,11 @@ TARGETS := bridge portal discover helper tool
 BIN_DIR := dist/bin/arm64
 PKG_DIR := dist/pkg
 
+# Sem estas dependências o make reaproveita binários antigos mesmo depois de
+# mudar o código ou os templates embutidos no portal.
+GO_SOURCES := $(shell find cmd pkg internal -type f -name '*.go')
+TEMPLATE_SOURCES := $(shell find cmd/portal/templates -type f -name '*.html')
+
 export CGO_ENABLED=0
 export GOOS=linux
 export GOARCH=arm64
@@ -23,7 +28,7 @@ export GOARCH=arm64
 .PHONY: all
 all: $(addprefix $(BIN_DIR)/, $(addprefix printserver-, $(TARGETS)))
 
-$(BIN_DIR)/printserver-%:
+$(BIN_DIR)/printserver-%: $(GO_SOURCES) $(TEMPLATE_SOURCES)
 	@mkdir -p $(BIN_DIR)
 	go build $(GOFLAGS) -ldflags='$(LDFLAGS)' -o $@ ./cmd/$*
 
