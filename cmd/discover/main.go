@@ -117,16 +117,24 @@ func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 	b.WriteString("<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">\n")
 	b.WriteString("<service-group>\n")
 	b.WriteString("  <name>PrintServer</name>\n")
+	visible := 0
 	for _, p := range cfg.Printers {
 		if !p.Enabled {
 			continue
+		}
+		visible++
+		// O nome visto na rede é sempre PrintServer. A fila CUPS continua
+		// com o nome estável por serial dentro do rp= e no painel.
+		friendly := "PrintServer"
+		if visible > 1 {
+			friendly = fmt.Sprintf("PrintServer %d", visible)
 		}
 		queue := printprofile.QueueName(p.SerialNumber)
 		usb := fmt.Sprintf("MFG:%s;MDL:%s;DES:%s;CMD:PCL",
 			avahiText(p.Manufacturer), avahiText(p.Model), avahiText(p.Name))
 
 		fmt.Fprintf(&b, "  <service>\n")
-		fmt.Fprintf(&b, "    <name>%s</name>\n", avahiText(queue))
+		fmt.Fprintf(&b, "    <name>%s</name>\n", avahiText(friendly))
 		b.WriteString("    <type>_pdl-datastream._tcp</type>\n")
 		fmt.Fprintf(&b, "    <port>%d</port>\n", p.TCPPort)
 		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", avahiText(p.Name))
@@ -134,7 +142,7 @@ func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 		b.WriteString("  </service>\n")
 
 		fmt.Fprintf(&b, "  <service>\n")
-		fmt.Fprintf(&b, "    <name>%s IPP</name>\n", avahiText(queue))
+		fmt.Fprintf(&b, "    <name>%s</name>\n", avahiText(friendly))
 		b.WriteString("    <type>_ipp._tcp</type>\n")
 		b.WriteString("    <port>631</port>\n")
 		fmt.Fprintf(&b, "    <txt-record>rp=printers/%s</txt-record>\n", queue)

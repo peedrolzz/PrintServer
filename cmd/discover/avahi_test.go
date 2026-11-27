@@ -46,6 +46,7 @@ func TestPublishAvahi(t *testing.T) {
 	var doc struct {
 		XMLName  xml.Name `xml:"service-group"`
 		Services []struct {
+			Name string `xml:"name"`
 			Type string `xml:"type"`
 		} `xml:"service"`
 	}
@@ -54,6 +55,36 @@ func TestPublishAvahi(t *testing.T) {
 	}
 	if len(doc.Services) != 2 {
 		t.Fatalf("esperados 2 serviços, vieram %d", len(doc.Services))
+	}
+	for _, svc := range doc.Services {
+		if svc.Name != "PrintServer" {
+			t.Fatalf("nome anunciado deve ser PrintServer, veio %q", svc.Name)
+		}
+	}
+	if strings.Contains(got, "<name>ps-") {
+		t.Fatalf("nome da fila vazou no anúncio: %s", got)
+	}
+}
+
+func TestPublishAvahiNomesUnicos(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Printers{Printers: []config.Printer{
+		{Name: "Primeira", SerialNumber: "AAA", TCPPort: 9100, Enabled: true},
+		{Name: "Segunda", SerialNumber: "BBB", TCPPort: 9101, Enabled: true},
+	}}
+	if err := publishAvahi(cfg, dir, true); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, avahiFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	if !strings.Contains(got, "<name>PrintServer</name>") {
+		t.Fatalf("primeiro nome ausente: %s", got)
+	}
+	if !strings.Contains(got, "<name>PrintServer 2</name>") {
+		t.Fatalf("segundo nome ausente: %s", got)
 	}
 }
 
