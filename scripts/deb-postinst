@@ -26,6 +26,8 @@ systemctl daemon-reload || true
 # processo que escreve na USB; a fila aponta para 127.0.0.1:9100.
 systemctl enable cups.service 2>/dev/null || true
 systemctl start cups.service 2>/dev/null || true
+# O padrão do Debian escuta só em localhost. A Pi precisa aceitar IPP da rede.
+cupsctl --remote-any 2>/dev/null || true
 /usr/bin/printserver-tool cups-sync >/dev/null 2>&1 || true
 
 for u in \
