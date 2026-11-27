@@ -123,8 +123,9 @@ func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 			continue
 		}
 		visible++
-		// O nome visto na rede é sempre PrintServer. A fila CUPS continua
-		// com o nome estável por serial dentro do rp= e no painel.
+		// O IPP aparece como PrintServer. A porta 9100 é legada e recebe
+		// o sufixo USB para não ser confundida com a fila que aceita PDF.
+		// A fila CUPS continua com o nome estável por serial no rp=.
 		friendly := "PrintServer"
 		if visible > 1 {
 			friendly = fmt.Sprintf("PrintServer %d", visible)
@@ -134,7 +135,7 @@ func publishAvahi(cfg *config.Printers, dir string, enabled bool) error {
 			avahiText(p.Manufacturer), avahiText(p.Model), avahiText(p.Name))
 
 		fmt.Fprintf(&b, "  <service>\n")
-		fmt.Fprintf(&b, "    <name>%s</name>\n", avahiText(friendly))
+		fmt.Fprintf(&b, "    <name>%s USB</name>\n", avahiText(friendly))
 		b.WriteString("    <type>_pdl-datastream._tcp</type>\n")
 		fmt.Fprintf(&b, "    <port>%d</port>\n", p.TCPPort)
 		fmt.Fprintf(&b, "    <txt-record>ty=%s</txt-record>\n", avahiText(p.Name))

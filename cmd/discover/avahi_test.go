@@ -56,10 +56,12 @@ func TestPublishAvahi(t *testing.T) {
 	if len(doc.Services) != 2 {
 		t.Fatalf("esperados 2 serviços, vieram %d", len(doc.Services))
 	}
+	names := map[string]bool{}
 	for _, svc := range doc.Services {
-		if svc.Name != "PrintServer" {
-			t.Fatalf("nome anunciado deve ser PrintServer, veio %q", svc.Name)
-		}
+		names[svc.Name] = true
+	}
+	if !names["PrintServer"] || !names["PrintServer USB"] {
+		t.Fatalf("nomes inesperados: %v", names)
 	}
 	if strings.Contains(got, "<name>ps-") {
 		t.Fatalf("nome da fila vazou no anúncio: %s", got)
@@ -85,6 +87,12 @@ func TestPublishAvahiNomesUnicos(t *testing.T) {
 	}
 	if !strings.Contains(got, "<name>PrintServer 2</name>") {
 		t.Fatalf("segundo nome ausente: %s", got)
+	}
+	if !strings.Contains(got, "<name>PrintServer USB</name>") {
+		t.Fatalf("nome USB ausente: %s", got)
+	}
+	if !strings.Contains(got, "<name>PrintServer 2 USB</name>") {
+		t.Fatalf("segundo nome USB ausente: %s", got)
 	}
 }
 
